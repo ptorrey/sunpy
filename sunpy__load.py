@@ -33,26 +33,18 @@ if __name__ == '__main__':    #code to execute if called from command-line
     pass    #do nothing 
 
 
-#== Basic routine to build a synthetic image from a SUNRISE fits file and return the image to the user
-#def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, camera=0):
-#    print "loading broadband file"
-#    obj = sunpy.sunpy__synthetic_image.synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, camera=camera)
-#    return_image = obj.bg_image.return_image()
-#    return_rp    = obj.r_petro_kpc
-#    return return_image, return_rp
-
-
 
 def my_fits_open(filename):
     if (not os.path.exists(filename)):
         print "file not found:", filename
         sys.exit()
-
     return fits.open(filename)
 
-#== Loads an idealized sunrise broadband image for a specified fits file, band, and camera.
-#== The band can be specified as a number or a string (must match the "band_names")
+
 def load_broadband_image(filename,band=0,camera=0):
+  """ Loads an idealized sunrise broadband image for a specified fits file, band, and camera.
+      The band can be specified as a number or a string (must match the "band_names")		"""
+
   band_images = load_all_broadband_images(filename,camera=camera)
   band_names  = load_broadband_names(filename)
 
@@ -64,21 +56,21 @@ def load_broadband_image(filename,band=0,camera=0):
 
   return return_image
 
-#==============================================================================#
+
 def load_fov(filename):
     hdulist = my_fits_open(filename)
     data = hdulist['CAMERA0-PARAMETERS'].header['linear_fov']
     hdulist.close()
     return data
 
-#===============================================================================#
+
 def load_broadband_names(filename):
     hdulist = my_fits_open(filename)
     name_array = hdulist['FILTERS'].data.field(0)
     hdulist.close()
     return name_array
 
-#===============================================================================#
+
 def load_broadband_fast_names(filename):
     print " "
     print "WARNING: fast NAMES HAVE BEEN HARD-CODED; CHECK OUTPUT BELOW FOR CONSISTENCY!!!"
@@ -99,7 +91,7 @@ def load_broadband_fast_names(filename):
 
     return fast_names
 
-#===============================================================================#
+
 def load_broadband_effective_wavelengths(filename,band=None):
   if (not os.path.exists(filename)):
     print "file not found:", filename
@@ -119,7 +111,7 @@ def load_broadband_effective_wavelengths(filename,band=None):
   band=None
   return name_array
 
-#===============================================================================#
+
 def load_all_broadband_images(filename,camera=0):
   if (not os.path.exists(filename)):
     print "file not found:", filename
@@ -134,7 +126,7 @@ def load_all_broadband_images(filename,camera=0):
   hdulist.close()
   return data
 
-#===============================================================================#
+
 def load_broadband_image(filename,band=0,camera=0):
   band_images = load_all_broadband_images(filename,camera=camera)
   band_names  = load_broadband_names(filename)
@@ -147,7 +139,7 @@ def load_broadband_image(filename,band=0,camera=0):
 
   return return_image
 
-#===============================================================================#
+
 def load_all_broadband_photometry(filename,camera=0):
   if (not os.path.exists(filename)):
     print "file not found:", filename
@@ -164,7 +156,7 @@ def load_all_broadband_apparent_magnitudes(filename,camera=0,dist=4e8):
     return apparent_magnitudes
 
 
-#===============================================================================#
+
 def load_redshift(filename):
   if (not os.path.exists(filename)):
     print "file not found:", filename
@@ -175,19 +167,19 @@ def load_redshift(filename):
   hdulist.close()
   return redshift
 
-#===============================================================================#
+
 def load_sed_lambda(filename):
   hdulist = my_fits_open(filename)
   lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['lambda  ']
   hdulist.close()
   return lambda_array
 
+
 def load_sed_l_lambda(filename):
   hdulist = my_fits_open(filename)
   l_lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['L_lambda']
   hdulist.close()
   return l_lambda_array
-#===============================================================================#
 
 
 

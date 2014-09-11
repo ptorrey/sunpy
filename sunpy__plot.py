@@ -1,13 +1,13 @@
-# routines for reading headers and data blocks from the image pipeline fits files
-# usage e.g.,:
-#
-#   import readfits as rf
-#   header = rf.fits_header("broadband_1234.fits")              # reads fits header
-#   print header.redshift
-#
-#   image = rf.fits_image("broadbrnad_1234.fits",camera=0,band="JOHNSON_B_RES")
-#
-#
+"""
+routines for plotting images from the SUNRISE data output
+
+
+Example usage:
+
+Dependencies:
+
+"""
+
 
 import numpy as np
 import os
