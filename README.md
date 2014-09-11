@@ -8,10 +8,9 @@ Contributors:
 - Greg Snyder (gsnyder@stsci.edu)
 
 
-Greg Snyder is responsible for most of the "image realism" components of this module
-This includes:
+Greg Snyder is responsible for the "image realism" components of this module including:
   - PSF blurring
-  - Rebinning galaxy images to appropriate pixel scale given their redshift and telescope angular resolution
+  - Rebinning images to new pixel scale given input redshift and telescope angular resolution
   - Adding of random noise
   - Adding of background images (SDSS)
 
