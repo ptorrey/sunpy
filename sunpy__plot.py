@@ -49,7 +49,7 @@ def plot_synthetic_sdss_gri(filename,camera=0,savefile=None,scale_min=1e-3, lupt
     rp, img = return_synthetic_sdss_gri_img(filename, camera=camera, scale_min=scale_min, lupton_alpha=lupton_alpha, lupton_Q=lupton_Q, psf_fwhm_arcsec=psf_fwhm_arcsec,
                                         include_background=include_background)
 
-    my_save_image(img, savefile, opt_text='rp='+str(rp))
+    my_save_image(img, savefile)		#, opt_text='rp='+str(rp))
     del img
     gc.collect()
 
