@@ -75,12 +75,30 @@ backgrounds = [	[], [],
 
 
 #== Basic routine to build a synthetic image from a SUNRISE fits file and return the image to the user
-def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, camera=0, psf_fwhm_arcsec=None, include_background=True):
-    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec, include_background=include_background )
+def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None,
+			camera=0, psf_fwhm_arcsec=None,
+                        add_background=True,
+                        add_noise=True,
+                        add_psf=True,
+                        rebin_phys=True,
+                        resize_rp=True,
+			**kwargs):
+
+
+    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec,
+                        add_background=add_background,
+			add_noise=add_noise,
+                        add_psf=add_psf,
+                        rebin_phys=rebin_phys,
+                        resize_rp=resize_rp,
+			**kwargs
+				)
+
     return_image = obj.bg_image.return_image()
     return_rp    = obj.r_petro_kpc
-
     return return_image, return_rp
+
+    return 1
 
 
 #=====================================================#
@@ -137,31 +155,6 @@ class single_image:
     def return_image(self):
 	return self.image
 
-#============ COSMOLOGY PARAMETERS =====================#
-# cosmology class:
-#
-#  used to track (i) the cosmological parameters and 
-#  (ii) image properties set by our adopted cosmology
-#
-#  This class is used to distinguish features of the telescope
-#  (e.g., pixel size in arcseconds) from features of our 
-# adopted cosmology (e.g.,image kpc per arcsec)
-#
-#=======================================================#
-class cosmology:
-    def __init__(self, redshift, H0=70.4, WM=0.2726, WV=0.7274):
-	self.H0=H0
-	self.WM=WM
-	self.WV=WV
-	self.redshift = redshift
-        self.lum_dist       = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DL_Mpc']          ## luminosity dist in mpc
-        self.ang_diam_dist  = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DA_Mpc']          ## 
-        self.kpc_per_arcsec = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['PS_kpc']
-
-
-
-
-
 
 #============ TELESCOPE PARAMETERS =====================#
 # telescope class:
@@ -175,9 +168,6 @@ class telescope:
 
 
 
-
-
-
 #=============SYNTHETIC_IMAGE CLAS======================#
 # synthetic_image:
 # 
@@ -187,7 +177,20 @@ class telescope:
 # comparisons with SDSS images.
 #=======================================================#
 class synthetic_image:
-    def __init__(self, filename, band=0, camera=0, redshift=0.05, psf_fwhm_arcsec=None, pixelsize_arcsec=0.24, r_petro_kpc=None, save_fits=True, seed=None, include_background=True):
+    def __init__(self, filename, band=0, camera=0, redshift=0.05, 
+			psf_fwhm_arcsec=None, 
+			pixelsize_arcsec=0.24, 
+			r_petro_kpc=None, save_fits=True, seed=None, 
+			add_background=True,
+			add_psf=True,
+			add_noise=True,
+			rebin_phys=True,
+			rebin_gz=False,
+			resize_rp=True,
+			sn_limit=25.0,
+			sky_sig=None
+			):
+
         if (not os.path.exists(filename)):
             print "file not found:", filename
             sys.exit()
@@ -198,6 +201,7 @@ class synthetic_image:
 	start_time = time.time()
 	self.filename = filename
 	self.cosmology = cosmology(redshift)
+	print pixelsize_arcsec
 	self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec)
 
 #============ DO THE READING ===========================#
@@ -228,61 +232,99 @@ class synthetic_image:
 	all_images  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera)
 	self.sunrise_image.init_image(all_images[band,:,:], self) 
 
-	self.add_gaussian_psf()
-	self.rebin_to_physical_scale()
-	self.add_noise()
-	self.calc_r_petro(r_petro_kpc=r_petro_kpc)
-	self.resize_image_from_rp()
-	self.add_background(seed=seed, include_background=include_background)
+	print "adding gaussing psf"
+	self.add_gaussian_psf(add_psf=add_psf)
+
+	print "rebinning"
+	self.rebin_to_physical_scale(rebin_phys=rebin_phys)
+
+	print "adding noise"
+	self.add_noise(add_noise=add_noise, sn_limit=sn_limit, sky_sig=sky_sig)
+
+	print "calculating rp"
+	self.calc_r_petro(r_petro_kpc=r_petro_kpc, resize_rp=resize_rp)
+
+	print "resizing image"
+	self.resize_image_from_rp(resize_rp=resize_rp)
+
+	print "adding background"
+	self.add_background(seed=seed, add_background=add_background, rebin_gz=rebin_gz)
+
+
 	end_time   = time.time()
 	print "init images + adding realism took "+str(end_time - start_time)+" seconds"
 
-	if save_fits:
+	if 0:	#save_fits:
 	    orig_dir=filename[:filename.index('broadband')]
 	    outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'.fits'
 	    self.save_bgimage_fits(outputfitsfile)
 
 
-    def add_gaussian_psf(self, sample_factor=1.0):		# operates on sunrise_image -> creates psf_image
-	current_psf_sigma_pixels = self.telescope.psf_fwhm_arcsec * (1.0/2.355) / self.sunrise_image.pixel_in_arcsec
+    def add_gaussian_psf(self, add_psf=True, sample_factor=1.0):		# operates on sunrise_image -> creates psf_image
+	if add_psf:
+	    current_psf_sigma_pixels = self.telescope.psf_fwhm_arcsec * (1.0/2.355) / self.sunrise_image.pixel_in_arcsec
 
-	if current_psf_sigma_pixels<8:				# want the psf sigma to be resolved with (at least) 8 pixels...
-	    target_psf_sigma_pixels  = 8.0
-	    n_pixel_new = np.floor(self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels )
+	    if current_psf_sigma_pixels<8:				# want the psf sigma to be resolved with (at least) 8 pixels...
+	        target_psf_sigma_pixels  = 8.0
+	        n_pixel_new = np.floor(self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels )
 
-	    if n_pixel_new > 2500:		# an arbitrary upper limit owing to memory constraints.  Beyond this, the PSF is already very small...
-		n_pixel_new = 2500
-		target_psf_sigma_pixels = n_pixel_new * current_psf_sigma_pixels / self.sunrise_image.n_pixels
+	        if n_pixel_new > 2500:		# an arbitrary upper limit owing to memory constraints.  Beyond this, the PSF is already very small...
+		    n_pixel_new = 2500
+		    target_psf_sigma_pixels = n_pixel_new * current_psf_sigma_pixels / self.sunrise_image.n_pixels
 
-	    new_image = congrid.congrid(self.sunrise_image.image,  (n_pixel_new, n_pixel_new) )
-	    current_psf_sigma_pixels = target_psf_sigma_pixels * ((self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels) / n_pixel_new )
+	        new_image = congrid.congrid(self.sunrise_image.image,  (n_pixel_new, n_pixel_new) )
+	        current_psf_sigma_pixels = target_psf_sigma_pixels * ((self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels) / n_pixel_new )
+	    else:
+	        new_image = self.sunrise_image.image
+
+	    psf_image = np.zeros_like( new_image ) * 1.0
+	    dummy = sp.ndimage.filters.gaussian_filter(new_image, current_psf_sigma_pixels, output=psf_image, mode='constant')
+
+	    self.psf_image.init_image(psf_image, self) #self.param_header.get('linear_fov'), self.cosmology.kpc_per_arcsec)
 	else:
-	    new_image = self.sunrise_image.image
-
-	psf_image = np.zeros_like( new_image ) * 1.0
-	dummy = sp.ndimage.filters.gaussian_filter(new_image, current_psf_sigma_pixels, output=psf_image, mode='constant')
-
-	self.psf_image.init_image(psf_image, self) #self.param_header.get('linear_fov'), self.cosmology.kpc_per_arcsec)
+	    self.psf_image.init_image(self.sunrise_image.image, self)
 
 
-    def rebin_to_physical_scale(self, verbose=False):		# operates on psf_image -> creates rebinned_image
-	n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
-	rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
+    def rebin_to_physical_scale(self, rebin_phys=True):		# operates on psf_image -> creates rebinned_image
+	if rebin_phys:
 
-	self.rebinned_image.init_image(rebinned_image, self) 
+	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
+	    print self.telescope.pixelsize_arcsec
+	    print n_pixel_new
+
+	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
+  	    self.rebinned_image.init_image(rebinned_image, self) 
+	else:
+	    self.rebinned_image.init_image(self.psf_image.image, self)
+
+	print self.rebinned_image.n_pixels
 
 
-    def add_noise(self, sn_limit=25.0):				# operates on rebinned_image -> creates noisy_image
-	total_flux 	= np.sum( self.rebinned_image.image )
-	area 		= 1.0 * self.rebinned_image.n_pixels * self.rebinned_image.n_pixels
-	sky_sig 	= np.sqrt( (total_flux / sn_limit)**2 / (area**2 ) )
-	noise_image 	= 0.0 * sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels )
+    def add_noise(self, add_noise=True, sky_sig=None, sn_limit=25.0):				# operates on rebinned_image -> creates noisy_image
+	if add_noise:
+	    if sky_sig==None:
+		print "sky_sig was not set directly, using sn_limit"
+	        total_flux 	= np.sum( self.rebinned_image.image )
+	        area 		= 1.0 * self.rebinned_image.n_pixels * self.rebinned_image.n_pixels
+	        sky_sig 	= np.sqrt( (total_flux / sn_limit)**2 / (area**2 ) )
 
-	self.noisy_image.init_image(self.rebinned_image.image + noise_image, self)
+	    noise_image 	=  sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels ) 
+
+	    new_image = self.rebinned_image.image + noise_image
+#	    while new_image.min() < 0 :
+#		bad_pixels = new_image < 0
+#		noise_image         =  sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels )
+#		new_image[bad_pixels] = self.rebinned_image.image[bad_pixels] + noise_image[bad_pixels]
+
+	    self.noisy_image.init_image(new_image, self)
+
+#	    self.noisy_image.init_image(self.rebinned_image.image + noise_image, self)
+	else:
+	    self.noisy_image.init_image(self.rebinned_image.image, self)
 
 
-    def calc_r_petro(self, r_petro_kpc=None):		# rename to "set_r_petro"
-	if r_petro_kpc==None:
+    def calc_r_petro(self, r_petro_kpc=None, resize_rp=True):		# rename to "set_r_petro"
+	if ( (r_petro_kpc==None) & (resize_rp==True) ):
             i=0
 	
 	    image_to_use 	= self.noisy_image.image_in_nmaggies
@@ -301,6 +343,8 @@ class synthetic_image:
             Pind = np.argmin( np.absolute( np.flipud(PetroRatio) - 0.2) )
             PetroRadius = np.flipud(RadiusObject.RadiusGrid)[Pind]
 	    r_petro_kpc = PetroRadius * self.noisy_image.pixel_in_kpc
+	else:
+	    r_petro_kpc = 1.0
 
 	r_petro_pixels = r_petro_kpc / self.noisy_image.pixel_in_kpc	
 
@@ -308,39 +352,41 @@ class synthetic_image:
 	self.r_petro_kpc    = r_petro_kpc
 
 
-    def resize_image_from_rp(self):
-	""" author: Greg Snyder """
-	rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
-	Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
-        rebinned_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (Ntotal_new, Ntotal_new) )
-	flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image_in_nmaggies)
-	rebinned_image /= flux_consv_fac
+    def resize_image_from_rp(self, resize_rp=True):
+	if resize_rp:
+	    rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
+	    Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
+            rebinned_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (Ntotal_new, Ntotal_new) )
+	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image_in_nmaggies)
+	    rebinned_image /= flux_consv_fac
 
-	diff = n_pixels_galaxy_zoo - Ntotal_new		#
+	    diff = n_pixels_galaxy_zoo - Ntotal_new		#
 
-        if diff >= 0:							# P. Torrey.  --  desired FOV is larger than already rendered... this is not a problem is image edges have ~0 flux.  Otherwise, can cause artifacts.
-            shift = 0
-            shiftc = np.floor(1.0*diff/2.0)
-	    fake_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
-            fake_image[shiftc:shiftc+Ntotal_new,shiftc:shiftc+Ntotal_new] = rebinned_image[0:Ntotal_new, 0:Ntotal_new]
-            rp_image = fake_image
+            if diff >= 0:							# P. Torrey.  --  desired FOV is larger than already rendered... this is not a problem is image edges have ~0 flux.  Otherwise, can cause artifacts.
+                shift = 0
+                shiftc = np.floor(1.0*diff/2.0)
+	        fake_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+                fake_image[shiftc:shiftc+Ntotal_new,shiftc:shiftc+Ntotal_new] = rebinned_image[0:Ntotal_new, 0:Ntotal_new]
+                rp_image = fake_image
 
-	    rp_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
-        else:
-            shift = np.floor(-1.0*diff/2.0)
-            rp_image = rebinned_image[shift:shift+n_pixels_galaxy_zoo,shift:shift+n_pixels_galaxy_zoo]
+	        rp_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+            else:
+                shift = np.floor(-1.0*diff/2.0)
+                rp_image = rebinned_image[shift:shift+n_pixels_galaxy_zoo,shift:shift+n_pixels_galaxy_zoo]
 
-	self.rp_image.init_image(rp_image, self, fov = 424.0*(0.008 * self.r_petro_kpc) )
+	    self.rp_image.init_image(rp_image, self, fov = 424.0*(0.016 * self.r_petro_kpc) )
+	else:
+	    self.rp_image.init_image(self.noisy_image.image, self, fov=self.noisy_image.pixel_in_kpc*self.noisy_image.n_pixels)
 
 	
-    def add_background(self, seed=1, include_background=True):
-	""" author: Greg Snyder """
+    def add_background(self, seed=1, add_background=True, rebin_gz=False):
 	bg_filename = (backgrounds[self.band])[0]
         file = pyfits.open(bg_filename) ; header = file[0].header ; pixsize = get_pixelsize_arcsec(header) ; Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
 	
         Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
-	if (Npix_get > n_pixels_galaxy_zoo):				# P. Torrey 9/10/14   -- this is sub optimal, but necessary to avoid strange noise ...
-	    Npix_get = n_pixels_galaxy_zoo				#			... in the images.  Could cause problems for automated analysis.
+
+	if (Npix_get > self.rp_image.n_pixels):				# P. Torrey 9/10/14   -- this is sub optimal, but necessary to avoid strange noise ...
+	    Npix_get = self.rp_image.n_pixels				#			... in the images.  Could cause problems for automated analysis.
 
     	im = file[0].data 
 
@@ -353,14 +399,20 @@ class synthetic_image:
         startj = np.random.random_integers(5,halfval_j)
 
         nanomaggies = im[starti:starti+Npix_get,startj:startj+Npix_get]
-        nanomaggies_gridded = congrid.congrid(nanomaggies, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo))
+        nanomaggies_gridded = congrid.congrid(nanomaggies, (self.rp_image.n_pixels, self.rp_image.n_pixels))
         factor = np.sum(nanomaggies_gridded)/np.sum(nanomaggies)
 	bg_image = nanomaggies_gridded / factor
 
-	if include_background:
-	   self.bg_image.init_image(bg_image + self.rp_image.image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)
+	if add_background:
+	    new_image = bg_image + self.rp_image.image
 	else:
-	   self.bg_image.init_image(self.rp_image.image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)
+	    new_image = self.rp_image.image
+
+	if rebin_gz:
+	    new_image = congrid.congrid( new_image, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+	        
+	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)
+
 
 
     def save_bgimage_fits(self,outputfitsfile):
@@ -475,6 +527,29 @@ def my_fits_open(filename):
 
 
 
+
+
+
+#============ COSMOLOGY PARAMETERS =====================#
+# cosmology class:
+#
+#  used to track (i) the cosmological parameters and 
+#  (ii) image properties set by our adopted cosmology
+#
+#  This class is used to distinguish features of the telescope
+#  (e.g., pixel size in arcseconds) from features of our 
+# adopted cosmology (e.g.,image kpc per arcsec)
+#
+#=======================================================#
+class cosmology:
+    def __init__(self, redshift, H0=70.4, WM=0.2726, WV=0.7274):
+        self.H0=H0
+        self.WM=WM
+        self.WV=WV
+        self.redshift = redshift
+        self.lum_dist       = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DL_Mpc']          ## luminosity dist in mpc
+        self.ang_diam_dist  = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DA_Mpc']          ## 
+        self.kpc_per_arcsec = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['PS_kpc']
 
 
 

@@ -35,8 +35,12 @@ if __name__ == '__main__':    #code to execute if called from command-line
 
 
 
-def plot_synthetic_sdss_gri(filename,camera=0,savefile=None,scale_min=1e-3, lupton_alpha=1, lupton_Q=1e-10, psf_fwhm_arcsec=None,
-                                        include_background=True ):
+def plot_synthetic_sdss_gri(filename,camera=0,savefile=None, **kwargs):
+
+#				scale_min=1e-3, lupton_alpha=1, 
+#				lupton_Q=1e-10, 
+#				psf_fwhm_arcsec=None,
+#                             	include_background=True ):
     """ routine for plotting synthetic sdss gri images from Illustris idealized images including appropriate pixel scaling, noise, etc.  """
 
     if (not os.path.exists(filename)):
@@ -46,8 +50,10 @@ def plot_synthetic_sdss_gri(filename,camera=0,savefile=None,scale_min=1e-3, lupt
     if savefile==None:
         savefile = 'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'.png'
 
-    rp, img = return_synthetic_sdss_gri_img(filename, camera=camera, scale_min=scale_min, lupton_alpha=lupton_alpha, lupton_Q=lupton_Q, psf_fwhm_arcsec=psf_fwhm_arcsec,
-                                        include_background=include_background)
+    rp, img = return_synthetic_sdss_gri_img(filename, camera=camera, **kwargs)
+
+#scale_min=scale_min, lupton_alpha=lupton_alpha, lupton_Q=lupton_Q, psf_fwhm_arcsec=psf_fwhm_arcsec,
+#                                        include_background=include_background)
 
     my_save_image(img, savefile)		#, opt_text='rp='+str(rp))
     del img
@@ -66,19 +72,58 @@ def plot_sdss_gri(filename,camera=0,savefile='./sdss_gri.png',scale_min=0.1,scal
     gc.collect()
 
 
-def return_synthetic_sdss_gri_img(filename, camera=0, lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, psf_fwhm_arcsec=None, 
-					include_background=True):
+def return_synthetic_sdss_gri_img(filename, camera=0, lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, 
+				psf_fwhm_arcsec=None, 
+				pixelsize_arcsec=0.24,
+				redshift=0.05,
+				add_background=True,
+				add_noise=True,
+                        	add_psf=True,
+                        	rebin_phys=True,
+				rebin_gz=False,
+                        	resize_rp=True,
+				sn_limit=25,
+				sky_sig=None,
+				b_fac=0.7,
+				g_fac=1.0,
+				r_fac=1.3):
+
     seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
 
-    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', r_petro_kpc=None, seed=(seed*(camera+1)), camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec, include_background=include_background)
-    g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', r_petro_kpc=rp,   seed=(seed*(camera+1)), camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec, include_background=include_background)
-    r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', r_petro_kpc=rp,   seed=(seed*(camera+1)), camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec, include_background=include_background)
+    all_args = {'seed':			seed*(camera+1),
+		'camera': 		camera,
+		'psf_fwhm_arcsec':	psf_fwhm_arcsec,
+		'pixelsize_arcsec':	pixelsize_arcsec,
+		'add_background':	add_background,
+		'add_noise':	 	add_noise,
+		'add_psf':		add_psf,
+		'rebin_phys':		rebin_phys,
+		'rebin_gz':		rebin_gz,
+		'resize_rp':		resize_rp,
+		'redshift':		redshift,
+		'sn_limit':		sn_limit,
+		'sky_sig':		sky_sig}
+
+    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
+				r_petro_kpc=None, **all_args)
+
+    g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
+				r_petro_kpc=rp, **all_args)
+
+    r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
+				r_petro_kpc=rp, **all_args)
+
+    print b_image.min(), b_image.max()
+    print g_image.min(), g_image.max()
+    print r_image.min(), r_image.max()
+
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
 
-    b_image *= 1.1
-    g_image *= 1.0
-    r_image *= 1.0
+
+    b_image *= b_fac
+    g_image *= g_fac
+    r_image *= r_fac
  
     I = (r_image + g_image + b_image)/3
     val = np.arcsinh( lupton_alpha * lupton_Q * (I - scale_min))/lupton_Q
@@ -118,6 +163,7 @@ def return_synthetic_sdss_gri_img(filename, camera=0, lupton_alpha=0.5, lupton_Q
 
     img[img<0] = 0
     return rp, img
+
 
 def return_sdss_gri_img(filename,camera=0,scale_min=0.1,scale_max=50,size_scale=1.0, non_linear=0.5):
     if (not os.path.exists(filename)):
