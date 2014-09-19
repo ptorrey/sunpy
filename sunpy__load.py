@@ -41,11 +41,11 @@ def my_fits_open(filename):
     return fits.open(filename)
 
 
-def load_broadband_image(filename,band=0,camera=0):
+def load_broadband_image(filename,band=0, **kwargs):
   """ Loads an idealized sunrise broadband image for a specified fits file, band, and camera.
       The band can be specified as a number or a string (must match the "band_names")		"""
 
-  band_images = load_all_broadband_images(filename,camera=camera)
+  band_images = load_all_broadband_images(filename, **kwargs)
   band_names  = load_broadband_names(filename)
 
   if type(band) is int:

@@ -35,107 +35,60 @@ if __name__ == '__main__':    #code to execute if called from command-line
 
 
 
-def plot_synthetic_sdss_gri(filename,camera=0,savefile=None, **kwargs):
-
-#				scale_min=1e-3, lupton_alpha=1, 
-#				lupton_Q=1e-10, 
-#				psf_fwhm_arcsec=None,
-#                             	include_background=True ):
+def plot_synthetic_sdss_gri(filename, savefile='syn_sdss_gri.png', **kwargs):
     """ routine for plotting synthetic sdss gri images from Illustris idealized images including appropriate pixel scaling, noise, etc.  """
 
-    if (not os.path.exists(filename)):
-        print "file not found:", filename
-        sys.exit()
-
-    if savefile==None:
-        savefile = 'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'.png'
-
-    rp, img = return_synthetic_sdss_gri_img(filename, camera=camera, **kwargs)
-
-#scale_min=scale_min, lupton_alpha=lupton_alpha, lupton_Q=lupton_Q, psf_fwhm_arcsec=psf_fwhm_arcsec,
-#                                        include_background=include_background)
-
-    my_save_image(img, savefile)		#, opt_text='rp='+str(rp))
-    del img
-    gc.collect()
-
-def plot_sdss_gri(filename,camera=0,savefile='./sdss_gri.png',scale_min=0.1,scale_max=50, non_linear=0.5 ):
-    """ routine for plotting synthetic sdss gri images from Illustris idealized images *without* additional image effects """
-
-    if (not os.path.exists(filename)):
-        print "file not found:", filename
-        sys.exit()
-
-    img = return_sdss_gri_img(filename,camera=camera,scale_min=scale_min,scale_max=scale_max, non_linear=non_linear)
+    rp, img = return_synthetic_sdss_gri_img(filename, **kwargs)
     my_save_image(img, savefile)
     del img
     gc.collect()
 
 
-def return_synthetic_sdss_gri_img(filename, camera=0, lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, 
-				psf_fwhm_arcsec=None, 
-				pixelsize_arcsec=0.24,
-				redshift=0.05,
-				add_background=True,
-				add_noise=True,
-                        	add_psf=True,
-                        	rebin_phys=True,
-				rebin_gz=False,
-                        	resize_rp=True,
-				sn_limit=25,
-				sky_sig=None,
-				b_fac=0.7,
-				g_fac=1.0,
-				r_fac=1.3):
+def plot_sdss_gri(filename, savefile='./sdss_gri.png', **kwargs):
+    """ routine for plotting synthetic sdss gri images from Illustris idealized images *without* additional image effects """
+
+    img = return_sdss_gri_img(filename, **kwargs)
+    my_save_image(img, savefile)
+    del img
+    gc.collect()
+
+
+def return_synthetic_sdss_gri_img(filename, 
+				lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, 
+                                b_fac=0.7, g_fac=1.0, r_fac=1.3,
+				**kwargs):
 
     seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
 
-    all_args = {'seed':			seed*(camera+1),
-		'camera': 		camera,
-		'psf_fwhm_arcsec':	psf_fwhm_arcsec,
-		'pixelsize_arcsec':	pixelsize_arcsec,
-		'add_background':	add_background,
-		'add_noise':	 	add_noise,
-		'add_psf':		add_psf,
-		'rebin_phys':		rebin_phys,
-		'rebin_gz':		rebin_gz,
-		'resize_rp':		resize_rp,
-		'redshift':		redshift,
-		'sn_limit':		sn_limit,
-		'sky_sig':		sky_sig}
-
     b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
-				r_petro_kpc=None, **all_args)
+				seed=seed,
+				r_petro_kpc=None, 
+				**kwargs)
 
     g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
-				r_petro_kpc=rp, **all_args)
+				seed=seed,
+				r_petro_kpc=rp, 
+				**kwargs)
 
     r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
-				r_petro_kpc=rp, **all_args)
-
-    print b_image.min(), b_image.max()
-    print g_image.min(), g_image.max()
-    print r_image.min(), r_image.max()
+                                seed=seed,
+				r_petro_kpc=rp, 
+				**kwargs)
 
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
-
-
+ 
     b_image *= b_fac
     g_image *= g_fac
     r_image *= r_fac
  
     I = (r_image + g_image + b_image)/3
     val = np.arcsinh( lupton_alpha * lupton_Q * (I - scale_min))/lupton_Q
+    I[ I < 1e-6 ] = 1e100		# from below, this effectively sets the pixel to 0
 
     img[:,:,0] = r_image * val / I
     img[:,:,1] = g_image * val / I
     img[:,:,2] = b_image * val / I
-
-    print "Lupton Q     "+str(lupton_Q)
-    print "scale_min    "+str(scale_min)
-    print "img min/max/mean "+str(img.min())+"  "+str(img.max())+"  "+str(img.mean())
-    print " "
 
     maxrgbval = np.amax(img, axis=2)
  
@@ -157,6 +110,7 @@ def return_synthetic_sdss_gri_img(filename, camera=0, lupton_alpha=0.5, lupton_Q
     img[img<0] = 0
 
     print "img min/max/mean "+str(img.min())+"  "+str(img.max())+"  "+str(img.mean())
+    print " "
 
     del b_image, g_image, r_image, I, val
     gc.collect()

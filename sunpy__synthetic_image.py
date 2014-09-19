@@ -9,7 +9,6 @@ calculation, and add background image (SDSS only supported at the moment).
 
 The majority of the code in this file was developed by Greg Snyder.
 
-
 """
 import numpy as np
 import os
@@ -23,7 +22,6 @@ import scipy.ndimage
 import scipy.signal
 import congrid
 import sunpy.sunpy__load
-#import matplotlib.pyplot as plt
 import time
 
 __author__ = "Paul Torrey and Greg Snyder"
@@ -71,116 +69,25 @@ backgrounds = [	[], [],
 		[], [], [], [], [], [], [], [], [], [],
 		[], [], [], [], [], [], [], [], [], [],
 		[], [], [], [], [], []		]
-######################################################################################################################################################
 
 
-#== Basic routine to build a synthetic image from a SUNRISE fits file and return the image to the user
-def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None,
-			camera=0, psf_fwhm_arcsec=None,
-                        add_background=True,
-                        add_noise=True,
-                        add_psf=True,
-                        rebin_phys=True,
-                        resize_rp=True,
-			**kwargs):
-
-
-    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, camera=camera, psf_fwhm_arcsec=psf_fwhm_arcsec,
-                        add_background=add_background,
-			add_noise=add_noise,
-                        add_psf=add_psf,
-                        rebin_phys=rebin_phys,
-                        resize_rp=resize_rp,
-			**kwargs
-				)
+def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, **kwargs):
+    """ build a synthetic image from a SUNRISE fits file and return the image to the user """
+    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, **kwargs)
 
     return_image = obj.bg_image.return_image()
     return_rp    = obj.r_petro_kpc
     return return_image, return_rp
 
-    return 1
 
-
-#=====================================================#
-# single_image class:
-# 
-# This class is used to host and track the properties for 
-# a single image (one galaxy, one band, one level of realism).
-# This class tracks important image traits, such as the 
-# image array itself, the field of view, number of pixels,
-# ab_zeropoint, pixel scale, etc.
-# 
-# When new images are created (e.g., when psf bluring is 
-# done on the original image) a new "single_image" instance 
-# is created.  
-#
-# The synthetic_image class (defined below) contains 
-# several instances of this single_image class
-#
-#=====================================================#
-class single_image:
-    def __init__(self):
-	self.image_exists = False
-
-    def init_image(self, image, parent_obj, fov=None):	
-        self.image 		= image
-        self.n_pixels 		= image.shape[0] 
-	if fov==None:
-            self.pixel_in_kpc    	= parent_obj.param_header.get('linear_fov') / self.n_pixels
-	else:
-	    self.pixel_in_kpc 		= fov / self.n_pixels
-        self.pixel_in_arcsec 	= self.pixel_in_kpc / parent_obj.cosmology.kpc_per_arcsec
-	self.image_exists	= True
-	self.camera_pixel_in_arcsec = (self.pixel_in_kpc / parent_obj.param_header.get('cameradist') ) * 2.06e5
-	self.calc_ab_abs_zero(parent_obj)
-	self.convert_to_nanomaggies(parent_obj)
-
-    def calc_ab_abs_zero(self, parent_obj):
-	lambda_eff_in_m         = parent_obj.lambda_eff
-        pixel_area_in_str       = self.camera_pixel_in_arcsec**2 / n_arcsec_per_str
-        cameradist_in_kpc       = parent_obj.param_header.get('cameradist')
-
-        to_nu                     = ((lambda_eff_in_m**2 ) / (speedoflight_m))* pixel_area_in_str
-        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                                          # 1 Jy = 1e-26 W/m^2/Hz
-        to_microjanskies_at_10pc  = to_microjanskies * (cameradist_in_kpc / abs_dist)**2                # distances are in kpc 
-
-        ab_abs_zeropoint = 23.90 - (2.5*np.log10(to_microjanskies_at_10pc))             # should go into self structure
-	self.ab_abs_zeropoint = ab_abs_zeropoint
-
-    def convert_to_nanomaggies(self, parent_obj):
-	distance_factor = (10.0 / (parent_obj.cosmology.lum_dist * 1.0e6))**2
-	orig_to_nmaggies = distance_factor * 10.0**(0.4*(22.5 - self.ab_abs_zeropoint) ) 
-	self.image_in_nmaggies = self.image * orig_to_nmaggies
-
-    def return_image(self):
-	return self.image
-
-
-#============ TELESCOPE PARAMETERS =====================#
-# telescope class:
-#
-# used to track the psf size in arcsec and pixelsize in arcsec
-#=======================================================#
-class telescope:
-    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec):
-	self.psf_fwhm_arcsec  = psf_fwhm_arcsec 
-	self.pixelsize_arcsec = pixelsize_arcsec
-
-
-
-#=============SYNTHETIC_IMAGE CLAS======================#
-# synthetic_image:
-# 
-# This is the main class of the routine, which is used to 
-# load a sunrise generated broadband.fits file and 
-# add all the image realism needed to make even handed 
-# comparisons with SDSS images.
-#=======================================================#
 class synthetic_image:
-    def __init__(self, filename, band=0, camera=0, redshift=0.05, 
-			psf_fwhm_arcsec=None, 
-			pixelsize_arcsec=0.24, 
-			r_petro_kpc=None, save_fits=True, seed=None, 
+    """ main class for loading and manipulating SUNRISE data into real data format  """
+    def __init__(self, 
+			filename, band=0, camera=0, 
+			redshift=0.05, 
+			psf_fwhm_arcsec=1.0, pixelsize_arcsec=0.24, 
+			r_petro_kpc=None, save_fits=False, 
+			seed=None, 
 			add_background=True,
 			add_psf=True,
 			add_noise=True,
@@ -188,23 +95,18 @@ class synthetic_image:
 			rebin_gz=False,
 			resize_rp=True,
 			sn_limit=25.0,
-			sky_sig=None
-			):
+			sky_sig=None,
+			**kwargs):
 
         if (not os.path.exists(filename)):
             print "file not found:", filename
             sys.exit()
 
-	if psf_fwhm_arcsec==None:
-	    psf_fwhm_arcsec=1.0
-
 	start_time = time.time()
-	self.filename = filename
+	self.filename  = filename
 	self.cosmology = cosmology(redshift)
-	print pixelsize_arcsec
 	self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec)
 
-#============ DO THE READING ===========================#
         band_names  = sunpy.sunpy__load.load_broadband_names(filename)
         hdulist = fits.open(filename)
 	
@@ -232,24 +134,12 @@ class synthetic_image:
 	all_images  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera)
 	self.sunrise_image.init_image(all_images[band,:,:], self) 
 
-	print "adding gaussing psf"
 	self.add_gaussian_psf(add_psf=add_psf)
-
-	print "rebinning"
 	self.rebin_to_physical_scale(rebin_phys=rebin_phys)
-
-	print "adding noise"
 	self.add_noise(add_noise=add_noise, sn_limit=sn_limit, sky_sig=sky_sig)
-
-	print "calculating rp"
 	self.calc_r_petro(r_petro_kpc=r_petro_kpc, resize_rp=resize_rp)
-
-	print "resizing image"
 	self.resize_image_from_rp(resize_rp=resize_rp)
-
-	print "adding background"
 	self.add_background(seed=seed, add_background=add_background, rebin_gz=rebin_gz)
-
 
 	end_time   = time.time()
 	print "init images + adding realism took "+str(end_time - start_time)+" seconds"
@@ -289,36 +179,24 @@ class synthetic_image:
 	if rebin_phys:
 
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
-	    print self.telescope.pixelsize_arcsec
-	    print n_pixel_new
 
 	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
 	else:
 	    self.rebinned_image.init_image(self.psf_image.image, self)
 
-	print self.rebinned_image.n_pixels
 
 
     def add_noise(self, add_noise=True, sky_sig=None, sn_limit=25.0):				# operates on rebinned_image -> creates noisy_image
 	if add_noise:
 	    if sky_sig==None:
-		print "sky_sig was not set directly, using sn_limit"
 	        total_flux 	= np.sum( self.rebinned_image.image )
 	        area 		= 1.0 * self.rebinned_image.n_pixels * self.rebinned_image.n_pixels
 	        sky_sig 	= np.sqrt( (total_flux / sn_limit)**2 / (area**2 ) )
 
 	    noise_image 	=  sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels ) 
-
 	    new_image = self.rebinned_image.image + noise_image
-#	    while new_image.min() < 0 :
-#		bad_pixels = new_image < 0
-#		noise_image         =  sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels )
-#		new_image[bad_pixels] = self.rebinned_image.image[bad_pixels] + noise_image[bad_pixels]
-
 	    self.noisy_image.init_image(new_image, self)
-
-#	    self.noisy_image.init_image(self.rebinned_image.image + noise_image, self)
 	else:
 	    self.noisy_image.init_image(self.rebinned_image.image, self)
 
@@ -356,13 +234,18 @@ class synthetic_image:
 	if resize_rp:
 	    rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
 	    Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
-            rebinned_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (Ntotal_new, Ntotal_new) )
-	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image_in_nmaggies)
+
+#            rebinned_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (Ntotal_new, Ntotal_new) )		# why using nanomaggies ?!?
+#	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image_in_nmaggies)
+
+	    rebinned_image = congrid.congrid(self.noisy_image.image            ,  (Ntotal_new, Ntotal_new) )
+	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image)
+
 	    rebinned_image /= flux_consv_fac
 
 	    diff = n_pixels_galaxy_zoo - Ntotal_new		#
 
-            if diff >= 0:							# P. Torrey.  --  desired FOV is larger than already rendered... this is not a problem is image edges have ~0 flux.  Otherwise, can cause artifacts.
+            if diff >= 0:		# P. Torrey.  --  desired FOV is larger than already rendered... this is not a problem is image edges have ~0 flux.  Otherwise, can cause artifacts.
                 shift = 0
                 shiftc = np.floor(1.0*diff/2.0)
 	        fake_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
@@ -404,14 +287,15 @@ class synthetic_image:
 	bg_image = nanomaggies_gridded / factor
 
 	if add_background:
-	    new_image = bg_image + self.rp_image.image
+	    new_image = bg_image + self.rp_image.image_in_nmaggies		# now this has nano maggies!
 	else:
-	    new_image = self.rp_image.image
+	    new_image = self.rp_image.image_in_nmaggies
 
 	if rebin_gz:
 	    new_image = congrid.congrid( new_image, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+		# should probably add a total flux conservation check here...
 	        
-	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)
+	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	# bg image now has nanomaggies
 
 
 
@@ -553,6 +437,73 @@ class cosmology:
 
 
 
+
+#============ TELESCOPE PARAMETERS =====================#
+# telescope class:
+#
+# used to track the psf size in arcsec and pixelsize in arcsec
+#=======================================================#
+class telescope:
+    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec):
+        self.psf_fwhm_arcsec  = psf_fwhm_arcsec
+        self.pixelsize_arcsec = pixelsize_arcsec
+
+
+
+
+#=====================================================#
+# single_image class:
+# 
+# This class is used to host and track the properties for 
+# a single image (one galaxy, one band, one level of realism).
+# This class tracks important image traits, such as the 
+# image array itself, the field of view, number of pixels,
+# ab_zeropoint, pixel scale, etc.
+# 
+# When new images are created (e.g., when psf bluring is 
+# done on the original image) a new "single_image" instance 
+# is created.  
+#
+# The synthetic_image class (defined below) contains 
+# several instances of this single_image class
+#
+#=====================================================#
+class single_image:
+    def __init__(self):
+        self.image_exists = False
+
+    def init_image(self, image, parent_obj, fov=None):
+        self.image              = image
+        self.n_pixels           = image.shape[0]
+        if fov==None:
+            self.pixel_in_kpc           = parent_obj.param_header.get('linear_fov') / self.n_pixels
+        else:
+            self.pixel_in_kpc           = fov / self.n_pixels
+        self.pixel_in_arcsec    = self.pixel_in_kpc / parent_obj.cosmology.kpc_per_arcsec
+        self.image_exists       = True
+        self.camera_pixel_in_arcsec = (self.pixel_in_kpc / parent_obj.param_header.get('cameradist') ) * 2.06e5
+        self.calc_ab_abs_zero(parent_obj)
+        self.convert_to_nanomaggies(parent_obj)
+
+    def calc_ab_abs_zero(self, parent_obj):
+        lambda_eff_in_m         = parent_obj.lambda_eff
+        pixel_area_in_str       = self.camera_pixel_in_arcsec**2 / n_arcsec_per_str
+        cameradist_in_kpc       = parent_obj.param_header.get('cameradist')
+
+        to_nu                     = ((lambda_eff_in_m**2 ) / (speedoflight_m))* pixel_area_in_str
+        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                                          # 1 Jy = 1e-26 W/m^2/Hz
+        to_microjanskies_at_10pc  = to_microjanskies * (cameradist_in_kpc / abs_dist)**2                # distances are in kpc 
+
+        ab_abs_zeropoint = 23.90 - (2.5*np.log10(to_microjanskies_at_10pc))             # should go into self structure
+        self.ab_abs_zeropoint = ab_abs_zeropoint
+
+    def convert_to_nanomaggies(self, parent_obj):
+        distance_factor = (10.0 / (parent_obj.cosmology.lum_dist * 1.0e6))**2
+        orig_to_nmaggies = distance_factor * 10.0**(0.4*(22.5 - self.ab_abs_zeropoint) )
+        self.image_in_nmaggies = self.image * orig_to_nmaggies
+
+    def return_image(self):
+        return self.image
 
 
 
