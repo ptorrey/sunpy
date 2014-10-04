@@ -59,16 +59,45 @@ n_pixels_galaxy_zoo = 424
 # needs to be created with the image units in nanomaggies (if to be compatible with current framework).
 #
 
-backgrounds = [	[], [], 
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# SDSS-u
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-g.fits'], 	# SDSS-g
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-r.fits'], 	# SDSS-r
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-i.fits'], 	# SDSS-i
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-z.fits'], 	# SDSS-z
-		[], [], [], 
-		[], [], [], [], [], [], [], [], [], [],
-		[], [], [], [], [], [], [], [], [], [],
-		[], [], [], [], [], []		]
+backgrounds = [	[], [], 		# GALEX
+			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# 2 SDSS-u
+			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-g.fits'], 	# 3 SDSS-g
+			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-r.fits'], 	# 4 SDSS-r
+			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-i.fits'], 	# 5 SDSS-i
+			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-z.fits'], 	# 6 SDSS-z
+		[], [], [], [],				# 7-8-9-10 IRAC
+		[], [], [], [], [], [], [], [], [], [], 	# 11-12-13-14-15-16-17-18 JOHNSON/COUSINS + 2 mass
+		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #21
+		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #22
+		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #23 
+		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #24		# ACS
+		[' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
+#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 
+	        [' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
+#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 
+		[' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
+#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 				# f105/125/160
+		[], [], [], [], [], [], [], []		# NIRCAM
+		]
+
+bg_zpt = [ [], [],                 # GALEX
+                        [22.5],
+                        [22.5],
+                        [22.5],
+                        [22.5],
+                        [22.5],
+                [], [], [], [],                         # 7-8-9-10 IRAC
+                [], [], [], [], [], [], [], [], [], [],         # 11-12-13-14-15-16-17-18 JOHNSON/COUSINS + 2 mass
+                [25.69],
+                [25.69],
+                [25.69],
+                [25.69],
+                [25.69],
+                [25.69],
+                [25.69],
+                [], [], [], [], [], [], [], []          # NIRCAM
+                ]
+
 
 
 def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, **kwargs):
@@ -77,6 +106,7 @@ def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, **kwargs)
 
     return_image = obj.bg_image.return_image()
     return_rp    = obj.r_petro_kpc
+    print return_image.min(),return_image.max()
     return return_image, return_rp
 
 
@@ -96,6 +126,7 @@ class synthetic_image:
 			resize_rp=True,
 			sn_limit=25.0,
 			sky_sig=None,
+			verbose=False,
 			**kwargs):
 
         if (not os.path.exists(filename)):
@@ -132,7 +163,19 @@ class synthetic_image:
 	self.bg_image	    = single_image()		# add backgrounds (only possible for 5 SDSS bands at the moment)
 #============ SET ORIGINAL IMAGE ======================#
 	all_images  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera)
-	self.sunrise_image.init_image(all_images[band,:,:], self) 
+
+        to_nu                     = ((self.lambda_eff**2 ) / (speedoflight_m)) #* pixel_area_in_str
+        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                 # 1 muJy/str (1Jy = 1e-26 W/m^2/Hz)
+
+	this_image = all_images[band,:,:]
+	this_image = this_image * to_microjanskies 		# to microjanskies / str
+
+	if verbose:
+	    print "SUNRISE calculated the abmag for this system to be:"
+	    print self.filter_data.AB_mag_nonscatter0[band]
+
+	self.sunrise_image.init_image(this_image, self)
+	# assume now that all images are in micro-Janskies per str
 
 	self.add_gaussian_psf(add_psf=add_psf)
 	self.rebin_to_physical_scale(rebin_phys=rebin_phys)
@@ -144,7 +187,7 @@ class synthetic_image:
 	end_time   = time.time()
 	print "init images + adding realism took "+str(end_time - start_time)+" seconds"
 
-	if 0:	#save_fits:
+	if save_fits:
 	    orig_dir=filename[:filename.index('broadband')]
 	    outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'.fits'
 	    self.save_bgimage_fits(outputfitsfile)
@@ -154,40 +197,40 @@ class synthetic_image:
 	if add_psf:
 	    current_psf_sigma_pixels = self.telescope.psf_fwhm_arcsec * (1.0/2.355) / self.sunrise_image.pixel_in_arcsec
 
-	    if current_psf_sigma_pixels<8:				# want the psf sigma to be resolved with (at least) 8 pixels...
+	    if current_psf_sigma_pixels<8:	# want the psf sigma to be resolved with (at least) 8 pixels...
 	        target_psf_sigma_pixels  = 8.0
 	        n_pixel_new = np.floor(self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels )
 
-	        if n_pixel_new > 2500:		# an arbitrary upper limit owing to memory constraints.  Beyond this, the PSF is already very small...
+	        if n_pixel_new > 2500:		# an upper limit owing to memory constraints...  
+						# beyond this, the PSF is already very small...
 		    n_pixel_new = 2500
 		    target_psf_sigma_pixels = n_pixel_new * current_psf_sigma_pixels / self.sunrise_image.n_pixels
 
 	        new_image = congrid.congrid(self.sunrise_image.image,  (n_pixel_new, n_pixel_new) )
-	        current_psf_sigma_pixels = target_psf_sigma_pixels * ((self.sunrise_image.n_pixels * target_psf_sigma_pixels / current_psf_sigma_pixels) / n_pixel_new )
+	        current_psf_sigma_pixels = target_psf_sigma_pixels * (
+			(self.sunrise_image.n_pixels * target_psf_sigma_pixels 
+				/ current_psf_sigma_pixels) / n_pixel_new )
 	    else:
 	        new_image = self.sunrise_image.image
 
 	    psf_image = np.zeros_like( new_image ) * 1.0
-	    dummy = sp.ndimage.filters.gaussian_filter(new_image, current_psf_sigma_pixels, output=psf_image, mode='constant')
+	    dummy = sp.ndimage.filters.gaussian_filter(new_image, 
+			current_psf_sigma_pixels, output=psf_image, mode='constant')
 
-	    self.psf_image.init_image(psf_image, self) #self.param_header.get('linear_fov'), self.cosmology.kpc_per_arcsec)
+	    self.psf_image.init_image(psf_image, self) 
 	else:
 	    self.psf_image.init_image(self.sunrise_image.image, self)
 
 
-    def rebin_to_physical_scale(self, rebin_phys=True):		# operates on psf_image -> creates rebinned_image
+    def rebin_to_physical_scale(self, rebin_phys=True):
 	if rebin_phys:
-
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
-
 	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
 	else:
 	    self.rebinned_image.init_image(self.psf_image.image, self)
 
-
-
-    def add_noise(self, add_noise=True, sky_sig=None, sn_limit=25.0):				# operates on rebinned_image -> creates noisy_image
+    def add_noise(self, add_noise=True, sky_sig=None, sn_limit=25.0):
 	if add_noise:
 	    if sky_sig==None:
 	        total_flux 	= np.sum( self.rebinned_image.image )
@@ -234,18 +277,13 @@ class synthetic_image:
 	if resize_rp:
 	    rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
 	    Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
-
-#            rebinned_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (Ntotal_new, Ntotal_new) )		# why using nanomaggies ?!?
-#	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image_in_nmaggies)
-
 	    rebinned_image = congrid.congrid(self.noisy_image.image            ,  (Ntotal_new, Ntotal_new) )
-	    flux_consv_fac = np.sum(rebinned_image)/np.sum(self.noisy_image.image)
-
-	    rebinned_image /= flux_consv_fac
 
 	    diff = n_pixels_galaxy_zoo - Ntotal_new		#
 
-            if diff >= 0:		# P. Torrey.  --  desired FOV is larger than already rendered... this is not a problem is image edges have ~0 flux.  Otherwise, can cause artifacts.
+            if diff >= 0:		# P. Torrey.  --  desired FOV is larger than already rendered... 
+					# this is not a problem is image edges have ~0 flux.  
+					# Otherwise, can cause artifacts.
                 shift = 0
                 shiftc = np.floor(1.0*diff/2.0)
 	        fake_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
@@ -263,39 +301,52 @@ class synthetic_image:
 
 	
     def add_background(self, seed=1, add_background=True, rebin_gz=False):
-	bg_filename = (backgrounds[self.band])[0]
-        file = pyfits.open(bg_filename) ; header = file[0].header ; pixsize = get_pixelsize_arcsec(header) ; Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
-	
-        Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
-
-	if (Npix_get > self.rp_image.n_pixels):				# P. Torrey 9/10/14   -- this is sub optimal, but necessary to avoid strange noise ...
-	    Npix_get = self.rp_image.n_pixels				#			... in the images.  Could cause problems for automated analysis.
-
-    	im = file[0].data 
-
-        halfval_i = np.floor(np.float(Nx)/1.3)
-        halfval_j = np.floor(np.float(Ny)/1.3)
-
-	np.random.seed(seed=seed)
-
-        starti = np.random.random_integers(5,halfval_i)
-        startj = np.random.random_integers(5,halfval_j)
-
-        nanomaggies = im[starti:starti+Npix_get,startj:startj+Npix_get]
-        nanomaggies_gridded = congrid.congrid(nanomaggies, (self.rp_image.n_pixels, self.rp_image.n_pixels))
-        factor = np.sum(nanomaggies_gridded)/np.sum(nanomaggies)
-	bg_image = nanomaggies_gridded / factor
-
 	if add_background:
-	    new_image = bg_image + self.rp_image.image_in_nmaggies		# now this has nano maggies!
+	    #=== load *full* bg image, and its properties ===#  
+	    bg_filename = (backgrounds[self.band])[0]
+            file = pyfits.open(bg_filename) ; 
+            header = file[0].header ; 
+            pixsize = get_pixelsize_arcsec(header) ; 
+            Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
+	
+	    #=== figure out how much of the image to extract ===#
+            Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
+
+	    if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
+	        Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis.
+  
+    	    im = file[0].data 	# this is in some native units
+            halfval_i = np.floor(np.float(Nx)/1.3)
+	    halfval_j = np.floor(np.float(Ny)/1.3)
+	    np.random.seed(seed=seed)
+
+            starti = np.random.random_integers(5,halfval_i)
+            startj = np.random.random_integers(5,halfval_j)
+
+            bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
+
+	    #=== need to convert to microJy / str ===#
+	   # if (self.band==2) or (self.band==3) or (self.band==4) or (self.band==5) or (self.band==6):
+	#	 bg_image_muJy = bg_image_raw * 3.631 # image was in nmaggies 
+	 #   else:
+		
+
+	    bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
+
+	    pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
+	    bg_image = bg_image_muJy / pixel_area_in_str 
+
+	    #=== need to rebin bg_image  ===#
+            bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels))
+	    new_image = bg_image + self.rp_image.image
+	    new_image[ new_image < self.rp_image.image.min() ] = self.rp_image.image.min()
 	else:
-	    new_image = self.rp_image.image_in_nmaggies
+	    new_image = self.rp_image.image
 
 	if rebin_gz:
 	    new_image = congrid.congrid( new_image, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
-		# should probably add a total flux conservation check here...
 	        
-	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	# bg image now has nanomaggies
+	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	
 
 
 
@@ -306,7 +357,7 @@ class synthetic_image:
         #Are there other quantities of interest??
         primhdu = pyfits.PrimaryHDU(theobj.image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
         primhdu.header.update('ABABSZP',22.5,'For Final Image')  #THIS SHOULD BE CORRECT FOR NANOMAGGIE IMAGES ONLY
-        primhdu.header.update('ORIGZP',theobj.ab_abs_zeropoint,'For Original Image')
+#        primhdu.header.update('ORIGZP',theobj.ab_abs_zeropoint,'For Original Image')
         primhdu.header.update('PIXSCALE',theobj.pixel_in_arcsec,'For Final Image, arcsec')
         primhdu.header.update('PIXORIG', theobj.camera_pixel_in_arcsec, 'For Original Image, arcsec')
         primhdu.header.update('PIXKPC',theobj.pixel_in_kpc, 'KPC')
@@ -348,10 +399,17 @@ class synthetic_image:
 
 
 def get_pixelsize_arcsec(header):
-    cd1_1 = header.get('CD1_1')  # come in degrees
+    cd1_1 = header.get('CD1_1')  # come in degrees	
     cd1_2 = header.get('CD1_2')
 
-    pix_arcsec = 3600.0*(cd1_1**2 + cd1_2**2)**0.5
+    if cd1_2==None:
+	cd1_2 = header.get('CD2_2')
+
+    try:
+        pix_arcsec = 3600.0*(cd1_1**2 + cd1_2**2)**0.5
+    except:
+	print "WARNING!!! SETTING PIXEL SCALE MANUALLY!"
+	pix_arcsec = 0.05
 
     return pix_arcsec
 
@@ -482,8 +540,12 @@ class single_image:
         self.pixel_in_arcsec    = self.pixel_in_kpc / parent_obj.cosmology.kpc_per_arcsec
         self.image_exists       = True
         self.camera_pixel_in_arcsec = (self.pixel_in_kpc / parent_obj.param_header.get('cameradist') ) * 2.06e5
-        self.calc_ab_abs_zero(parent_obj)
-        self.convert_to_nanomaggies(parent_obj)
+
+	pixel_in_sr = (1e3*self.pixel_in_kpc /10.0)**2
+	image_in_muJy =  self.image  * pixel_in_sr		# should now have muJy
+        tot_img_in_Jy = np.sum(image_in_muJy) / 1e6		# now have total image flux in Jy
+	abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
+	print "the ab magnitude of this image is :"+str(abmag)
 
     def calc_ab_abs_zero(self, parent_obj):
         lambda_eff_in_m         = parent_obj.lambda_eff
@@ -491,21 +553,26 @@ class single_image:
         cameradist_in_kpc       = parent_obj.param_header.get('cameradist')
 
         to_nu                     = ((lambda_eff_in_m**2 ) / (speedoflight_m))* pixel_area_in_str
-        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                                          # 1 Jy = 1e-26 W/m^2/Hz
-        to_microjanskies_at_10pc  = to_microjanskies * (cameradist_in_kpc / abs_dist)**2                # distances are in kpc 
+        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)             # 1 Jy = 1e-26 W/m^2/Hz
+        to_microjanskies_at_10pc  = to_microjanskies * (cameradist_in_kpc / abs_dist)**2  
 
-        ab_abs_zeropoint = 23.90 - (2.5*np.log10(to_microjanskies_at_10pc))             # should go into self structure
+        ab_abs_zeropoint = 23.90 - (2.5*np.log10(to_microjanskies_at_10pc))             
         self.ab_abs_zeropoint = ab_abs_zeropoint
 
-    def convert_to_nanomaggies(self, parent_obj):
+    def convert_orig_to_nanomaggies(self, parent_obj):
         distance_factor = (10.0 / (parent_obj.cosmology.lum_dist * 1.0e6))**2
         orig_to_nmaggies = distance_factor * 10.0**(0.4*(22.5 - self.ab_abs_zeropoint) )
         self.image_in_nmaggies = self.image * orig_to_nmaggies
 
     def return_image(self):
-        return self.image
+	fixed_norm_fac		= 10.0 / n_arcsec_per_str	# should probably get rid of this
+        return self.image * fixed_norm_fac 
 
 
+def return_img_nanomaggies_to_orig(image_nm, lum_dist, ab_abs_zeropoint):
+    distance_factor = (10.0 / (lum_dist * 1.0e6))**2
+    orig_to_nmaggies = distance_factor * 10.0**(0.4*(22.5 - ab_abs_zeropoint) )
+    return image_nm / orig_to_nmaggies
 
 
 

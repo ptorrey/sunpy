@@ -59,17 +59,14 @@ def return_synthetic_sdss_gri_img(filename,
 				**kwargs):
 
     seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
-
     b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
 				seed=seed,
 				r_petro_kpc=None, 
 				**kwargs)
-
     g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
 				seed=seed,
 				r_petro_kpc=rp, 
 				**kwargs)
-
     r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
                                 seed=seed,
 				r_petro_kpc=rp, 
@@ -92,6 +89,74 @@ def return_synthetic_sdss_gri_img(filename,
 
     maxrgbval = np.amax(img, axis=2)
  
+    changeind = maxrgbval > 1.0
+    img[changeind,0] = img[changeind,0]/maxrgbval[changeind]
+    img[changeind,1] = img[changeind,1]/maxrgbval[changeind]
+    img[changeind,2] = img[changeind,2]/maxrgbval[changeind]
+
+    minrgbval = np.amin(img, axis=2)
+    changeind = minrgbval < 0.0
+    img[changeind,0] = 0
+    img[changeind,1] = 0
+    img[changeind,2] = 0
+
+    changind = I < 0
+    img[changind,0] = 0
+    img[changind,1] = 0
+    img[changind,2] = 0
+    img[img<0] = 0
+
+    print "img min/max/mean "+str(img.min())+"  "+str(img.max())+"  "+str(img.mean())
+    print " "
+
+    del b_image, g_image, r_image, I, val
+    gc.collect()
+
+    img[img<0] = 0
+    return rp, img
+
+def return_synthetic_hst_img(filename,
+                                lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4,
+                                b_fac=1.0, g_fac=1.0, r_fac=1.0,
+                                **kwargs):
+
+    seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
+    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 25,
+                                seed=seed,
+                                r_petro_kpc=None,
+                                **kwargs)
+    g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 26,
+                                seed=seed,
+                                r_petro_kpc=rp,
+                                **kwargs)
+    r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 27,
+                                seed=seed,
+                                r_petro_kpc=rp,
+                                **kwargs)
+
+
+    n_pixels = r_image.shape[0]
+    img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
+
+    b_image *= b_fac
+    g_image *= g_fac
+    r_image *= r_fac
+
+    I = (r_image + g_image + b_image)/3
+    val = np.arcsinh( lupton_alpha * lupton_Q * (I - scale_min))/lupton_Q
+    I[ I < 1e-8 ] = 1e20               # from below, this effectively sets the pixel to 0
+
+    print val.min(), val.max()
+    print I.min(), I.max()
+
+    img[:,:,0] = r_image * val / I
+    img[:,:,1] = g_image * val / I
+    img[:,:,2] = b_image * val / I
+
+    print img.min(), img.max()
+
+    maxrgbval = np.amax(img, axis=2)
+
     changeind = maxrgbval > 1.0
     img[changeind,0] = img[changeind,0]/maxrgbval[changeind]
     img[changeind,1] = img[changeind,1]/maxrgbval[changeind]
