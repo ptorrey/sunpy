@@ -325,14 +325,17 @@ class synthetic_image:
 
             bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
 
+	    print " "
+            print " "
+            print " "
+	    print " after opening the bg image we find min/max:"
+	    print bg_image_raw.min(), bg_image_raw.max(), np.sum(bg_image_raw )
+            print " "
+            print " "
+            print " "
+
 	    #=== need to convert to microJy / str ===#
-	   # if (self.band==2) or (self.band==3) or (self.band==4) or (self.band==5) or (self.band==6):
-	#	 bg_image_muJy = bg_image_raw * 3.631 # image was in nmaggies 
-	 #   else:
-		
-
 	    bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
-
 	    pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
 	    bg_image = bg_image_muJy / pixel_area_in_str 
 
@@ -343,6 +346,10 @@ class synthetic_image:
 	else:
 	    new_image = self.rp_image.image
 
+
+#	new_image = bg_image
+#	print new_image.min(), new_image.max()
+	
 	if rebin_gz:
 	    new_image = congrid.congrid( new_image, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
 	        
@@ -355,7 +362,25 @@ class synthetic_image:
         theobj = self.bg_image
         #create primary HDU (the "final" image) and save important header information -- may want to verify that I got these right
         #Are there other quantities of interest??
-        primhdu = pyfits.PrimaryHDU(theobj.image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
+
+	image = theobj.image		# in muJy / str 
+	print "before converting and saving the image min/max are:"
+        print image.min(), image.max(), np.sum(image)
+
+
+	pixel_area_in_str = theobj.pixel_in_arcsec**2 / n_arcsec_per_str
+	image *= pixel_area_in_str      # in muJy 
+        image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) )
+
+	print "before saving the image min/max are:"
+	print image.min(), image.max(), np.sum(image) 
+
+#bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
+#pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
+#bg_image = bg_image_muJy / pixel_area_in_str
+
+
+        primhdu = pyfits.PrimaryHDU(image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
         primhdu.header.update('ABABSZP',22.5,'For Final Image')  #THIS SHOULD BE CORRECT FOR NANOMAGGIE IMAGES ONLY
 #        primhdu.header.update('ORIGZP',theobj.ab_abs_zeropoint,'For Original Image')
         primhdu.header.update('PIXSCALE',theobj.pixel_in_arcsec,'For Final Image, arcsec')
