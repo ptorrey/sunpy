@@ -7,7 +7,9 @@ convolve it with some psf function, add sky noise, rebin to an appropate pixel s
 calculation, and add background image (SDSS only supported at the moment).
 
 
-The majority of the code in this file was developed by Greg Snyder.
+The majority of the code in this file was developed by Greg Snyder and can be found in
+	 Snyder et al., (XXXX) XXXX, XXXX
+
 
 """
 import numpy as np
@@ -23,6 +25,8 @@ import scipy.signal
 import congrid
 import sunpy.sunpy__load
 import time
+import cosmocalc
+
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
@@ -35,10 +39,10 @@ __status__ = "Production"
 if __name__ == '__main__':    #code to execute if called from command-line
     pass    #do nothing 
 
+verbose=True
 
 
-# DEFINE SOME UNITS
-abs_dist        = 0.01          # 10 pc in units of kpc
+abs_dist        = 0.01         
 erg_per_joule   = 1e7
 speedoflight_m  = 2.99e8
 m2_to_cm2       = 1.0e-4
@@ -46,37 +50,34 @@ n_arcsec_per_str = 4.255e10             # (radian per arc second)^2
 n_pixels_galaxy_zoo = 424 
 
 
-####################################################################################################################################################
-# background images created by Greg Snyder on 6/18/14
-# background obtained from:  data.sdss3.org/mosaics
+###########################################################
+# SDSS background images created by Greg Snyder on 6/18/14#
+# SDSS background obtained from:  data.sdss3.org/mosaics  #
 # Ra = 175.0
 # Dec = 30.0
 # Size (deg) = 0.5
 # Pixel Scale = 0.24 "/pixel
 #
-# background images do not exist (here) for non-SDSS bands.
-# To add them, a large fits file with similar readability 
-# needs to be created with the image units in nanomaggies (if to be compatible with current framework).
-#
+# HST backgrounds provided by Erica Nelson and Pascal Oesch 
+# and integrated here by P. Torrey
+# #########################################################
 
-backgrounds = [	[], [], 		# GALEX
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# 2 SDSS-u
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-g.fits'], 	# 3 SDSS-g
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-r.fits'], 	# 4 SDSS-r
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-i.fits'], 	# 5 SDSS-i
-			['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/SDSS_backgrounds/J113959.99+300000.0-z.fits'], 	# 6 SDSS-z
+bg_base='/n/home01/ptorrey/Python/OwnModules/sunpy/backgrounds'
+backgrounds = [	[], [], 		# GALEX 0 1
+		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# 2 SDSS-u 
+		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-g.fits'], 	# 3 SDSS-g
+		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-r.fits'], 	# 4 SDSS-r
+		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-i.fits'], 	# 5 SDSS-i
+		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-z.fits'], 	# 6 SDSS-z
 		[], [], [], [],				# 7-8-9-10 IRAC
 		[], [], [], [], [], [], [], [], [], [], 	# 11-12-13-14-15-16-17-18 JOHNSON/COUSINS + 2 mass
-		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #21
-		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #22
-		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #23 
-		['/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #24		# ACS
-		[' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
-#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 
-	        [' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
-#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 
-		[' /n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/NonCompact/GOODSN_F160W.fits'],
-#/n/ghernquist/ptorrey/Illustris/IllustrisImagePipeline/HST_backgrounds/xdf_noise_F775W_30mas.fits'], 				# f105/125/160
+		[bg_base+'/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #21	ACS-435
+		[bg_base+'/HST_backgrounds/GOODSN_F606W.fits'], #22	ACS-606
+		[bg_base+'/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #23 	ACS-775
+		[bg_base+'/HST_backgrounds/xdf_noise_F775W_30mas.fits'], #24	ACS-850
+		[bg_base+'/HST_backgrounds/GOODSN_F125W.fits'],		 #25	f105w
+	        [bg_base+'/HST_backgrounds/GOODSN_F125W.fits'],		 #26    f125w
+		[bg_base+'/HST_backgrounds/GOODSN_F160W.fits'],		 #27	f160w
 		[], [], [], [], [], [], [], []		# NIRCAM
 		]
 
@@ -99,15 +100,43 @@ bg_zpt = [ [], [],                 # GALEX
                 ]
 
 
-
 def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, **kwargs):
     """ build a synthetic image from a SUNRISE fits file and return the image to the user """
     obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, **kwargs)
-
     return_image = obj.bg_image.return_image()
     return_rp    = obj.r_petro_kpc
-    print return_image.min(),return_image.max()
     return return_image, return_rp
+
+def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, seed=12345, n_bands=36, **kwargs):
+    """ loads n_band x n_pix x n_pix image array with apparent mags for synthetic images """
+    mags   = sunpy.sunpy__load.load_all_broadband_photometry(filename, camera=0)
+
+    for band in np.arange(n_bands):
+        obj          = synthetic_image(filename, band=int(band), seed=seed, redshift=redshift, **kwargs)    
+	img = obj.bg_image.return_image()		#  muJy / str
+	if band==0:
+	    n_pixels = img.shape[0]
+	    all_images = np.zeros( (n_bands, n_pixels, n_pixels ) )
+	all_images[band, :, :] = img			# muJy / str
+
+        pixel_in_sr = (1e3*obj.bg_image.pixel_in_kpc /10.0)**2
+
+    
+    all_images *=  pixel_in_sr / 1e6    	# in Jy
+
+    for band in np.arange(n_bands):
+        tot_img_in_Jy = np.sum(all_images[band,:,:])    # total image flux in Jy
+        abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
+        if verbose:
+            print "the ab magnitude of band "+str(band)+" is :"+str(abmag)+"  "+str(mags[band])
+            print abmag/mags[band], abmag - mags[band]
+	    print " "
+
+    all_images = -2.5 * np.log10( all_images / 3631 )                   # abmag in each pixel
+    dist = (cosmocalc.cosmocalc(redshift, H0=70.4, WM=0.2726, WV=0.7274))['DL_Mpc'] * 1e6
+    dist_modulus = 5.0 * ( np.log10(dist) - 1.0 )
+    apparent_magnitudes = dist_modulus + all_images
+    return apparent_magnitudes
 
 
 class synthetic_image:
@@ -123,6 +152,7 @@ class synthetic_image:
 			add_noise=True,
 			rebin_phys=True,
 			rebin_gz=False,
+			n_target_pixels=n_pixels_galaxy_zoo,
 			resize_rp=True,
 			sn_limit=25.0,
 			sky_sig=None,
@@ -173,8 +203,10 @@ class synthetic_image:
 	if verbose:
 	    print "SUNRISE calculated the abmag for this system to be:"
 	    print self.filter_data.AB_mag_nonscatter0[band]
+	print "SUNRISE calculated the abmag for this system to be:"
+        print self.filter_data.AB_mag_nonscatter0[band]
 
-	self.sunrise_image.init_image(this_image, self)
+	self.sunrise_image.init_image(this_image, self, comoving_to_phys_fov=False)
 	# assume now that all images are in micro-Janskies per str
 
 	self.add_gaussian_psf(add_psf=add_psf)
@@ -182,7 +214,7 @@ class synthetic_image:
 	self.add_noise(add_noise=add_noise, sn_limit=sn_limit, sky_sig=sky_sig)
 	self.calc_r_petro(r_petro_kpc=r_petro_kpc, resize_rp=resize_rp)
 	self.resize_image_from_rp(resize_rp=resize_rp)
-	self.add_background(seed=seed, add_background=add_background, rebin_gz=rebin_gz)
+	self.add_background(seed=seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels)
 
 	end_time   = time.time()
 	print "init images + adding realism took "+str(end_time - start_time)+" seconds"
@@ -224,6 +256,11 @@ class synthetic_image:
 
     def rebin_to_physical_scale(self, rebin_phys=True):
 	if rebin_phys:
+	    print " "
+	    print " "
+	    print self.psf_image.pixel_in_arcsec * self.psf_image.n_pixels
+	    print " "
+	    print " "
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
 	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
@@ -300,64 +337,53 @@ class synthetic_image:
 	    self.rp_image.init_image(self.noisy_image.image, self, fov=self.noisy_image.pixel_in_kpc*self.noisy_image.n_pixels)
 
 	
-    def add_background(self, seed=1, add_background=True, rebin_gz=False):
-	if add_background:
+    def add_background(self, seed=1, add_background=True, rebin_gz=False, n_target_pixels=424):
+	if add_background and (len(backgrounds[self.band]) > 0):
 	    #=== load *full* bg image, and its properties ===#  
-	    bg_filename = (backgrounds[self.band])[0]
-            file = pyfits.open(bg_filename) ; 
-            header = file[0].header ; 
-            pixsize = get_pixelsize_arcsec(header) ; 
-            Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
+	        bg_filename = (backgrounds[self.band])[0]
+                file = pyfits.open(bg_filename) ; 
+                header = file[0].header ; 
+                pixsize = get_pixelsize_arcsec(header) ; 
+                Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
 	
-	    #=== figure out how much of the image to extract ===#
-            Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
+	        #=== figure out how much of the image to extract ===#
+                Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
 
-	    if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
-	        Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis.
+	        if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
+	            Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis.
   
-    	    im = file[0].data 	# this is in some native units
-            halfval_i = np.floor(np.float(Nx)/1.3)
-	    halfval_j = np.floor(np.float(Ny)/1.3)
-	    np.random.seed(seed=seed)
+    	        im = file[0].data 	# this is in some native units
+                halfval_i = np.floor(np.float(Nx)/1.3)
+	        halfval_j = np.floor(np.float(Ny)/1.3)
+	        np.random.seed(seed=seed)
 
-            starti = np.random.random_integers(5,halfval_i)
-            startj = np.random.random_integers(5,halfval_j)
+                starti = np.random.random_integers(5,halfval_i)
+                startj = np.random.random_integers(5,halfval_j)
 
-            bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
+                bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
 
-	    print " "
-            print " "
-            print " "
-	    print " after opening the bg image we find min/max:"
-	    print bg_image_raw.min(), bg_image_raw.max(), np.sum(bg_image_raw )
-            print " "
-            print " "
-            print " "
+	        #=== need to convert to microJy / str ===#
+	        bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
+	        pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
+	        bg_image = bg_image_muJy / pixel_area_in_str 
 
-	    #=== need to convert to microJy / str ===#
-	    bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
-	    pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
-	    bg_image = bg_image_muJy / pixel_area_in_str 
-
-	    #=== need to rebin bg_image  ===#
-            bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels))
-	    new_image = bg_image + self.rp_image.image
-	    new_image[ new_image < self.rp_image.image.min() ] = self.rp_image.image.min()
+	        #=== need to rebin bg_image  ===#
+                bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels))
+	        new_image = bg_image + self.rp_image.image
+	        new_image[ new_image < self.rp_image.image.min() ] = self.rp_image.image.min()
 	else:
-	    new_image = self.rp_image.image
+	        new_image = self.rp_image.image
 
-
-#	new_image = bg_image
-#	print new_image.min(), new_image.max()
-	
 	if rebin_gz:
-	    new_image = congrid.congrid( new_image, (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+	    new_image = congrid.congrid( new_image, (n_target_pixels, n_target_pixels) )
 	        
+	print new_image.shape
+
 	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	
 
 
 
-    def save_bgimage_fits(self,outputfitsfile):
+    def save_bgimage_fits(self,outputfitsfile, save_img_in_muJy=False):
 	""" Written by G. Snyder 8/4/2014 to output FITS files from Sunpy module """
         theobj = self.bg_image
         #create primary HDU (the "final" image) and save important header information -- may want to verify that I got these right
@@ -370,7 +396,13 @@ class synthetic_image:
 
 	pixel_area_in_str = theobj.pixel_in_arcsec**2 / n_arcsec_per_str
 	image *= pixel_area_in_str      # in muJy 
-        image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) )
+        if save_img_in_muJy == False:
+	    if len(bg_zpt[self.band]) > 0:
+                image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) )
+	else:
+	    ' '
+	    'saving image in muJy!!!!!'
+	    ' '
 
 	print "before saving the image min/max are:"
 	print image.min(), image.max(), np.sum(image) 
@@ -555,11 +587,14 @@ class single_image:
     def __init__(self):
         self.image_exists = False
 
-    def init_image(self, image, parent_obj, fov=None):
+    def init_image(self, image, parent_obj, fov=None, comoving_to_phys_fov=False):
         self.image              = image
         self.n_pixels           = image.shape[0]
         if fov==None:
-            self.pixel_in_kpc           = parent_obj.param_header.get('linear_fov') / self.n_pixels
+	    if comoving_to_phys_fov:
+                self.pixel_in_kpc           = parent_obj.param_header.get('linear_fov') / self.n_pixels / (parent_obj.cosmology.redshift+1)
+	    else:
+		self.pixel_in_kpc           = parent_obj.param_header.get('linear_fov') / self.n_pixels
         else:
             self.pixel_in_kpc           = fov / self.n_pixels
         self.pixel_in_arcsec    = self.pixel_in_kpc / parent_obj.cosmology.kpc_per_arcsec
@@ -571,6 +606,14 @@ class single_image:
         tot_img_in_Jy = np.sum(image_in_muJy) / 1e6		# now have total image flux in Jy
 	abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
 	print "the ab magnitude of this image is :"+str(abmag)
+
+	print " "
+	print " "
+	print "The FoV is :"
+	print self.pixel_in_kpc * self.n_pixels 
+	print ""
+	print " "
+
 
     def calc_ab_abs_zero(self, parent_obj):
         lambda_eff_in_m         = parent_obj.lambda_eff
@@ -590,8 +633,8 @@ class single_image:
         self.image_in_nmaggies = self.image * orig_to_nmaggies
 
     def return_image(self):
-	fixed_norm_fac		= 10.0 / n_arcsec_per_str	# should probably get rid of this
-        return self.image * fixed_norm_fac 
+#	fixed_norm_fac		= 10.0 / n_arcsec_per_str	# should probably get rid of this
+        return self.image #* fixed_norm_fac 
 
 
 def return_img_nanomaggies_to_orig(image_nm, lum_dist, ab_abs_zeropoint):

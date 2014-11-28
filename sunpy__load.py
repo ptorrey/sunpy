@@ -19,7 +19,7 @@ import scipy.ndimage
 import congrid
 import matplotlib.pyplot as plt
 import sunpy.sunpy__synthetic_image
-
+import cosmocalc
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
@@ -32,6 +32,13 @@ __status__ = "Production"
 if __name__ == '__main__':    #code to execute if called from command-line
     pass    #do nothing 
 
+
+#abs_dist        = 0.01          # 10 pc in units of kpc
+#erg_per_joule   = 1e7
+speedoflight_m  = 2.99e8
+#m2_to_cm2       = 1.0e-4
+#n_arcsec_per_str = 4.255e10             # (radian per arc second)^2
+#n_pixels_galaxy_zoo = 424
 
 
 def my_fits_open(filename):
@@ -150,10 +157,49 @@ def load_all_broadband_photometry(filename,camera=0):
   return data
  
  
-def load_all_broadband_apparent_magnitudes(filename,camera=0,dist=4e8):
+def load_integrated_broadband_apparent_magnitudes(filename,camera=0,dist=4e8):
+    """ this is fairly easy b/c already in abs mag.  Only need to do distance correction """
     dist_modulus = 5.0 * ( np.log10(dist) - 1.0 )
     apparent_magnitudes = dist_modulus + load_all_broadband_photometry(filename,camera=camera)
     return apparent_magnitudes
+
+
+def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, **kwargs):
+    """ this is a little trickier b/c in W/m/m^2/str.  First convert to abs mag, then dist correction """
+    images = load_all_broadband_images(filename,camera=0)        # in W/m/m^2/str  shape = [n_band, n_pix, n_pix]
+    mags   = load_all_broadband_photometry(filename, camera=0)
+
+    n_pixels = images.shape[1]
+
+    hdulist = fits.open(filename)
+    lambda_eff = hdulist['FILTERS'].data['lambda_eff']
+    for index,this_lambda in enumerate(lambda_eff):
+        to_nu                     = ((this_lambda**2 ) / (speedoflight_m)) #* pixel_area_in_str
+        to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                 # 1 muJy/str (1Jy = 1e-26 W/m^2/Hz)
+        images[index,:,:] = images[index,:,:] * to_microjanskies              # to microjanskies / str
+    
+    pixel_in_kpc           = load_fov(filename)  / n_pixels
+    pixel_in_sr = (1e3 * pixel_in_kpc / 10.0)**2
+    images *=  pixel_in_sr                 			# in muJy
+    images /= 1e6						# in Jy				
+    for index,this_lambda in enumerate(lambda_eff):
+        tot_img_in_Jy = np.sum(images[index,:,:])           		  	# total image flux in Jy
+        abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
+	if False:
+            print "the ab magnitude of this image is :"+str(abmag)+"  "+str(mags[index])
+	    print abmag/mags[index], abmag - mags[index]
+
+        print index, np.sum(images[index,:,:])
+
+    images = -2.5 * np.log10( images / 3631 )			# abmag in each pixel
+
+    dist = (cosmocalc.cosmocalc(redshift, H0=70.4, WM=0.2726, WV=0.7274))['DL_Mpc'] * 1e6
+    dist_modulus = 5.0 * ( np.log10(dist) - 1.0 )
+    apparent_magnitudes = dist_modulus + images
+    
+    return apparent_magnitudes
+
+#    apparent_magnitudes = dist_modulus + 
 
 
 
@@ -181,5 +227,51 @@ def load_sed_l_lambda(filename):
   hdulist.close()
   return l_lambda_array
 
+# these options only with for sunrise with rad. transfer.  Not for current Illustris images #
+def load_sed_l_lambda_with_rt(filename, camera=0):
+  hdulist = my_fits_open(filename)
+  l_lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['L_lambda_out'+str(camera)]
+  hdulist.close()
+  return l_lambda_array
+
+def load_sed_l_lambda_scatter(filename, camera=0):
+  hdulist = my_fits_open(filename)
+  l_lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['L_lambda_scatter'+str(camera)]
+  hdulist.close()
+  return l_lambda_array
+
+def load_sed_l_lambda_nonscatter(filename, camera=0):
+  hdulist = my_fits_open(filename)
+  l_lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['L_lambda_nonscatter'+str(camera)]
+  hdulist.close()
+  return l_lambda_array
+
+def load_sed_l_lambda_ir(filename, camera=0):
+  hdulist = my_fits_open(filename)
+  l_lambda_array = hdulist['INTEGRATED_QUANTITIES'].data['L_lambda_ir'+str(camera)]
+  hdulist.close()
+  return l_lambda_array
+#===============================================================================#
 
 
+#===============================================================================#
+def load_stellar_mass_map(filename,camera=0):
+  hdulist = fits.open(filename)
+  camera_string = 'CAMERA'+str(camera)+'-AUX'
+  aux_image = hdulist[camera_string].data
+  map = aux_image[4,:,:]
+  return map
+
+def load_mass_weighted_stellar_age_map(filename,camera=0):
+  hdulist = fits.open(filename)
+  camera_string = 'CAMERA'+str(camera)+'-AUX'
+  aux_image = hdulist[camera_string].data
+  map = aux_image[7,:,:]
+  return map
+
+def load_stellar_metal_map(filename,camera=0):
+  hdulist = fits.open(filename)
+  camera_string = 'CAMERA'+str(camera)+'-AUX'
+  aux_image = hdulist[camera_string].data
+  map = aux_image[5,:,:]
+  return map

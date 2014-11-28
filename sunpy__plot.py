@@ -121,7 +121,7 @@ def return_synthetic_hst_img(filename,
                                 **kwargs):
 
     seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
-    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 25,
+    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 22,		#25,
                                 seed=seed,
                                 r_petro_kpc=None,
                                 **kwargs)
@@ -133,6 +133,10 @@ def return_synthetic_hst_img(filename,
                                 seed=seed,
                                 r_petro_kpc=rp,
                                 **kwargs)
+
+    print b_image.min(), b_image.max()
+    print g_image.min(), g_image.max()
+    print r_image.min(), r_image.max()
 
 
     n_pixels = r_image.shape[0]
@@ -153,7 +157,12 @@ def return_synthetic_hst_img(filename,
     img[:,:,1] = g_image * val / I
     img[:,:,2] = b_image * val / I
 
+    print " "
+    print " "
     print img.min(), img.max()
+
+    print " "
+    print " "
 
     maxrgbval = np.amax(img, axis=2)
 
@@ -241,6 +250,26 @@ def return_johnson_uvk_img(filename,camera=0,scale_min=0.1,scale_max=50,size_sca
     return img
 
 
+def return_stellar_mass_img(filename, camera=0, scale_min=1e8, scale_max=1e10, size_scale=1.0, non_linear=1e8):
+    image = sunpy__load.load_stellar_mass_map(filename, camera=camera)
+    n_pixels = image.shape[0]
+    img = np.zeros((n_pixels, n_pixels), dtype=float)
+    img[:,:] = img_scale.asinh(image, scale_min=scale_min, scale_max=scale_max, non_linear=non_linear)
+    img[img<0] = 0
+    return img
+
+def return_mass_weighted_age_img(filename, camera=0, scale_min=None, scale_max=None, size_scale=1.0):
+    image = sunpy__load.load_mass_weighted_stellar_age_map(filename, camera=camera)
+    image += 1e5
+    return image
+
+def return_stellar_metal_img(filename, camera=0, scale_min=None, scale_max=None, size_scale=1.0, non_linear=None):
+    image1 = sunpy__load.load_stellar_mass_map(filename, camera=camera)
+    image2 = sunpy__load.load_stellar_metal_map(filename, camera=camera)
+    image = image2/image1
+    image[image<0]      = 0     #image.min()
+    image[image*0 != 0] = 0     #image.min()
+    return image
 
 def my_save_image(img, savefile, opt_text=None):
     if img.shape[0] >1:
