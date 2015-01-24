@@ -22,7 +22,8 @@ import pyfits
 import scipy as sp
 import scipy.ndimage
 import scipy.signal
-import congrid
+import scipy.interpolate
+
 import sunpy.sunpy__load
 import time
 import cosmocalc
@@ -239,7 +240,7 @@ class synthetic_image:
 		    n_pixel_new = 2500
 		    target_psf_sigma_pixels = n_pixel_new * current_psf_sigma_pixels / self.sunrise_image.n_pixels
 
-	        new_image = congrid.congrid(self.sunrise_image.image,  (n_pixel_new, n_pixel_new) )
+	        new_image = congrid(self.sunrise_image.image,  (n_pixel_new, n_pixel_new) )
 	        current_psf_sigma_pixels = target_psf_sigma_pixels * (
 			(self.sunrise_image.n_pixels * target_psf_sigma_pixels 
 				/ current_psf_sigma_pixels) / n_pixel_new )
@@ -258,7 +259,7 @@ class synthetic_image:
     def rebin_to_physical_scale(self, rebin_phys=True):
 	if rebin_phys:
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
-	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
+	    rebinned_image = congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
 	else:
 	    self.rebinned_image.init_image(self.psf_image.image, self)
@@ -310,7 +311,7 @@ class synthetic_image:
 	if resize_rp:
 	    rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
 	    Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
-	    rebinned_image = congrid.congrid(self.noisy_image.image            ,  (Ntotal_new, Ntotal_new) )
+	    rebinned_image = congrid(self.noisy_image.image            ,  (Ntotal_new, Ntotal_new) )
 
 	    diff = n_pixels_galaxy_zoo - Ntotal_new		#
 
@@ -323,7 +324,7 @@ class synthetic_image:
                 fake_image[shiftc:shiftc+Ntotal_new,shiftc:shiftc+Ntotal_new] = rebinned_image[0:Ntotal_new, 0:Ntotal_new]
                 rp_image = fake_image
 
-	        rp_image = congrid.congrid(self.noisy_image.image_in_nmaggies,  (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+	        rp_image = congrid(self.noisy_image.image_in_nmaggies,  (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
             else:
                 shift = np.floor(-1.0*diff/2.0)
                 rp_image = rebinned_image[shift:shift+n_pixels_galaxy_zoo,shift:shift+n_pixels_galaxy_zoo]
@@ -373,7 +374,7 @@ class synthetic_image:
 	            bg_image = bg_image_muJy / pixel_area_in_str 
 
 	            #=== need to rebin bg_image  ===#
-                    bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels)) 
+                    bg_image = congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels)) 
 
 		    #=== compare sum(bg_image) to sum(self.rp_image.image) ===#
 		    if (fix_seed):
@@ -399,7 +400,7 @@ class synthetic_image:
 	        new_image = self.rp_image.image
 
 	if rebin_gz:
-	    new_image = congrid.congrid( new_image, (n_target_pixels, n_target_pixels) )
+	    new_image = congrid( new_image, (n_target_pixels, n_target_pixels) )
 	        
 	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	
 	return seed
@@ -668,4 +669,47 @@ def return_img_nanomaggies_to_orig(image_nm, lum_dist, ab_abs_zeropoint):
     return image_nm / orig_to_nmaggies
 
 
+
+def congrid(a, newdims, centre=False, minusone=False):
+    ''' Slimmed down version of congrid as originally obtained from:
+		http://wiki.scipy.org/Cookbook/Rebinning
+    '''
+    if not a.dtype in [np.float64, np.float32]:
+        a = np.cast[float](a)
+
+    m1 = np.cast[int](minusone)
+    ofs = np.cast[int](centre) * 0.5
+    old = np.array( a.shape )
+    ndims = len( a.shape )
+    if len( newdims ) != ndims:
+        print "[congrid] dimensions error. " \
+              "This routine currently only support " \
+              "rebinning to the same number of dimensions."
+        return None
+    newdims = np.asarray( newdims, dtype=float )
+    dimlist = []
+
+    for i in range( ndims ):
+        base = np.arange( newdims[i] )
+        dimlist.append( (old[i] - m1) / (newdims[i] - m1) \
+                            * (base + ofs) - ofs )
+    # specify old dims
+    olddims = [np.arange(i, dtype = np.float) for i in list( a.shape )]
+
+    # first interpolation - for ndims = any
+    mint = scipy.interpolate.interp1d( olddims[-1], a, kind=method )
+    newa = mint( dimlist[-1] )
+
+    trorder = [ndims - 1] + range( ndims - 1 )
+    for i in range( ndims - 2, -1, -1 ):
+        newa = newa.transpose( trorder )
+
+        mint = scipy.interpolate.interp1d( olddims[i], newa, kind=method )
+        newa = mint( dimlist[i] )
+
+    if ndims > 1:
+        # need one more transpose to return to original dimensions
+        newa = newa.transpose( trorder )
+
+    return newa
 
