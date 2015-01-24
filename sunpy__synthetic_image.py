@@ -28,6 +28,7 @@ import sunpy.sunpy__load
 import time
 import cosmocalc
 
+import wget
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
@@ -63,7 +64,9 @@ n_pixels_galaxy_zoo = 424
 # and integrated here by P. Torrey
 # #########################################################
 
+dl_base="http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds"
 bg_base='/n/home01/ptorrey/Python/OwnModules/sunpy/backgrounds'
+bg_base='./data/'
 backgrounds = [	[], [], 		# GALEX 0 1
 		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# 2 SDSS-u 
 		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-g.fits'], 	# 3 SDSS-g
@@ -126,10 +129,10 @@ def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, se
     for band in np.arange(n_bands):
         tot_img_in_Jy = np.sum(all_images[band,:,:])    # total image flux in Jy
         abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
-#        if verbose:
-#            print "the ab magnitude of band "+str(band)+" is :"+str(abmag)+"  "+str(mags[band])
-#            print abmag/mags[band], abmag - mags[band]
-#	    print " "
+        if verbose:
+            print "the ab magnitude of band "+str(band)+" is :"+str(abmag)+"  "+str(mags[band])
+            print abmag/mags[band], abmag - mags[band]
+	    print " "
 
     all_images = -2.5 * np.log10( all_images / 3631 )                   # abmag in each pixel
     dist = (cosmocalc.cosmocalc(redshift, H0=70.4, WM=0.2726, WV=0.7274))['DL_Mpc'] * 1e6
@@ -335,17 +338,38 @@ class synthetic_image:
 
 	
     def add_background(self, seed=1, add_background=True, rebin_gz=False, n_target_pixels=424, fix_seed=True):
+	print " "
+	print "adding background?!?!"
+	print ""
 	if add_background and (len(backgrounds[self.band]) > 0):
+		print "Yes!"
 
 		bg_image = 10.0*self.rp_image.image		# dummy values for while loop condition
 
 		tot_bg = np.sum(bg_image)
                 tot_img= np.sum(self.rp_image.image)
 		tol_fac = 1.0
+
+		print tot_bg, tol_fac*tot_img
 		while(tot_bg > tol_fac*tot_img):	
 
 	    #=== load *full* bg image, and its properties ===#  
 	            bg_filename = (backgrounds[self.band])[0]
+		    print " "
+		    print " "
+		    if not (os.path.isfile(bg_filename)):
+		        print "  Background files were not found...  "
+                        print "  The standard files used in Torrey al. (2015), Snyder et al., (2015) and Genel et al., (2014) ..."
+			print "  can be downloaded using the download_backgrounds routine or manually from:  "
+			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-u.fits "
+			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-g.fits "
+			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-r.fits "
+			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-i.fits "
+			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-z.fits "
+			print "  "
+			print "  Contact Paul Torrey (ptorrey@mit.edu) or Greg Snyder (gsnyder@stsci.edu) with further questions "
+		    print " "
+		    print " "
                     file = pyfits.open(bg_filename) ; 
                     header = file[0].header ; 
                     pixsize = get_pixelsize_arcsec(header) ; 
@@ -670,6 +694,9 @@ def return_img_nanomaggies_to_orig(image_nm, lum_dist, ab_abs_zeropoint):
 
 
 
+
+
+
 def congrid(a, newdims, centre=False, minusone=False):
     ''' Slimmed down version of congrid as originally obtained from:
 		http://wiki.scipy.org/Cookbook/Rebinning
@@ -689,6 +716,8 @@ def congrid(a, newdims, centre=False, minusone=False):
     newdims = np.asarray( newdims, dtype=float )
     dimlist = []
 
+
+
     for i in range( ndims ):
         base = np.arange( newdims[i] )
         dimlist.append( (old[i] - m1) / (newdims[i] - m1) \
@@ -697,14 +726,14 @@ def congrid(a, newdims, centre=False, minusone=False):
     olddims = [np.arange(i, dtype = np.float) for i in list( a.shape )]
 
     # first interpolation - for ndims = any
-    mint = scipy.interpolate.interp1d( olddims[-1], a, kind=method )
+    mint = scipy.interpolate.interp1d( olddims[-1], a, kind='linear', bounds_error=False, fill_value=0.0 )
     newa = mint( dimlist[-1] )
 
     trorder = [ndims - 1] + range( ndims - 1 )
     for i in range( ndims - 2, -1, -1 ):
         newa = newa.transpose( trorder )
 
-        mint = scipy.interpolate.interp1d( olddims[i], newa, kind=method )
+        mint = scipy.interpolate.interp1d( olddims[i], newa, kind='linear', bounds_error=False, fill_value=0.0 )
         newa = mint( dimlist[i] )
 
     if ndims > 1:
@@ -713,3 +742,18 @@ def congrid(a, newdims, centre=False, minusone=False):
 
     return newa
 
+def download_backgrounds():
+    if not os.path.exists('./data'):
+        os.makedirs('./data')
+    if not os.path.exists('./data/SDSS_backgrounds'):
+        os.makedirs('./data/SDSS_backgrounds')
+    if not os.path.exists('./data/HST_backgrounds'):
+        os.makedirs('./data/HST_backgrounds')
+    for this_background in backgrounds:
+        if len(this_background) > 0:
+            if not (os.path.isfile(this_background[0])):
+                url=dl_base+this_background[0][len(bg_base):]
+                this_file = wget.download(url)
+                os.rename(this_file, this_background[0])
+
+                print url
