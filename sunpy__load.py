@@ -12,14 +12,13 @@ import numpy as np
 import os
 import sys
 import astropy.io.fits as fits
-import cosmocalc
-import pyfits 
+import cosmocalc			# http://cxc.harvard.edu/contrib/cosmocalc/
 import scipy as sp
 import scipy.ndimage
 import congrid
 import matplotlib.pyplot as plt
 import sunpy.sunpy__synthetic_image
-import cosmocalc
+
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
