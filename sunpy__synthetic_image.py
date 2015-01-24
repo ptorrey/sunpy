@@ -100,12 +100,10 @@ bg_zpt = [ [], [],                 # GALEX
                 ]
 
 
-def build_synthetic_image(filename, band, r_petro_kpc=None, seed=None, **kwargs):
+def build_synthetic_image(filename, band, r_petro_kpc=None, **kwargs):
     """ build a synthetic image from a SUNRISE fits file and return the image to the user """
-    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, seed=seed, **kwargs)
-    return_image = obj.bg_image.return_image()
-    return_rp    = obj.r_petro_kpc
-    return return_image, return_rp
+    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, **kwargs)
+    return obj.bg_image.return_image(), obj.r_petro_kpc, obj.seed, obj.bg_failed
 
 def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, seed=12345, n_bands=36, **kwargs):
     """ loads n_band x n_pix x n_pix image array with apparent mags for synthetic images """
@@ -127,10 +125,10 @@ def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, se
     for band in np.arange(n_bands):
         tot_img_in_Jy = np.sum(all_images[band,:,:])    # total image flux in Jy
         abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
-        if verbose:
-            print "the ab magnitude of band "+str(band)+" is :"+str(abmag)+"  "+str(mags[band])
-            print abmag/mags[band], abmag - mags[band]
-	    print " "
+#        if verbose:
+#            print "the ab magnitude of band "+str(band)+" is :"+str(abmag)+"  "+str(mags[band])
+#            print abmag/mags[band], abmag - mags[band]
+#	    print " "
 
     all_images = -2.5 * np.log10( all_images / 3631 )                   # abmag in each pixel
     dist = (cosmocalc.cosmocalc(redshift, H0=70.4, WM=0.2726, WV=0.7274))['DL_Mpc'] * 1e6
@@ -156,7 +154,8 @@ class synthetic_image:
 			resize_rp=True,
 			sn_limit=25.0,
 			sky_sig=None,
-			verbose=False,
+			verbose=True,
+			fix_seed=True,
 			**kwargs):
 
         if (not os.path.exists(filename)):
@@ -203,8 +202,6 @@ class synthetic_image:
 	if verbose:
 	    print "SUNRISE calculated the abmag for this system to be:"
 	    print self.filter_data.AB_mag_nonscatter0[band]
-	print "SUNRISE calculated the abmag for this system to be:"
-        print self.filter_data.AB_mag_nonscatter0[band]
 
 	self.sunrise_image.init_image(this_image, self, comoving_to_phys_fov=False)
 	# assume now that all images are in micro-Janskies per str
@@ -214,10 +211,14 @@ class synthetic_image:
 	self.add_noise(add_noise=add_noise, sn_limit=sn_limit, sky_sig=sky_sig)
 	self.calc_r_petro(r_petro_kpc=r_petro_kpc, resize_rp=resize_rp)
 	self.resize_image_from_rp(resize_rp=resize_rp)
-	self.add_background(seed=seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels)
+
+	self.seed = seed
+        self.bg_failed= False
+	self.seed = self.add_background(seed=self.seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels, fix_seed=fix_seed)
 
 	end_time   = time.time()
-	print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+        if verbose:
+	    print "init images + adding realism took "+str(end_time - start_time)+" seconds"
 
 	if save_fits:
 	    orig_dir=filename[:filename.index('broadband')]
@@ -256,11 +257,6 @@ class synthetic_image:
 
     def rebin_to_physical_scale(self, rebin_phys=True):
 	if rebin_phys:
-	    print " "
-	    print " "
-	    print self.psf_image.pixel_in_arcsec * self.psf_image.n_pixels
-	    print " "
-	    print " "
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
 	    rebinned_image = congrid.congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
@@ -337,49 +333,76 @@ class synthetic_image:
 	    self.rp_image.init_image(self.noisy_image.image, self, fov=self.noisy_image.pixel_in_kpc*self.noisy_image.n_pixels)
 
 	
-    def add_background(self, seed=1, add_background=True, rebin_gz=False, n_target_pixels=424):
+    def add_background(self, seed=1, add_background=True, rebin_gz=False, n_target_pixels=424, fix_seed=True):
 	if add_background and (len(backgrounds[self.band]) > 0):
+
+		bg_image = 10.0*self.rp_image.image		# dummy values for while loop condition
+
+		tot_bg = np.sum(bg_image)
+                tot_img= np.sum(self.rp_image.image)
+		tol_fac = 1.0
+		while(tot_bg > tol_fac*tot_img):	
+
 	    #=== load *full* bg image, and its properties ===#  
-	        bg_filename = (backgrounds[self.band])[0]
-                file = pyfits.open(bg_filename) ; 
-                header = file[0].header ; 
-                pixsize = get_pixelsize_arcsec(header) ; 
-                Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
+	            bg_filename = (backgrounds[self.band])[0]
+                    file = pyfits.open(bg_filename) ; 
+                    header = file[0].header ; 
+                    pixsize = get_pixelsize_arcsec(header) ; 
+                    Nx = header.get('NAXIS2') ; Ny = header.get('NAXIS1')
 	
 	        #=== figure out how much of the image to extract ===#
-                Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
+                    Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
 
-	        if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
-	            Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis.
+	            if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
+	                Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis.
   
-    	        im = file[0].data 	# this is in some native units
-                halfval_i = np.floor(np.float(Nx)/1.3)
-	        halfval_j = np.floor(np.float(Ny)/1.3)
-	        np.random.seed(seed=seed)
+    	            im = file[0].data 	# this is in some native units
+                    halfval_i = np.floor(np.float(Nx)/1.3)
+	            halfval_j = np.floor(np.float(Ny)/1.3)
+		    print seed
+	            np.random.seed(seed=int(seed))
 
-                starti = np.random.random_integers(5,halfval_i)
-                startj = np.random.random_integers(5,halfval_j)
+                    starti = np.random.random_integers(5,halfval_i)
+                    startj = np.random.random_integers(5,halfval_j)
 
-                bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
+                    bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]
 
-	        #=== need to convert to microJy / str ===#
-	        bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
-	        pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
-	        bg_image = bg_image_muJy / pixel_area_in_str 
+	            #=== need to convert to microJy / str ===#
+	            bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
+	            pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
+	            bg_image = bg_image_muJy / pixel_area_in_str 
 
-	        #=== need to rebin bg_image  ===#
-                bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels))
+	            #=== need to rebin bg_image  ===#
+                    bg_image = congrid.congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels)) 
+
+		    #=== compare sum(bg_image) to sum(self.rp_image.image) ===#
+		    if (fix_seed):
+			tot_bg = 0
+		    else:
+		        tot_bg = np.sum(bg_image)
+		        tot_img= np.sum(self.rp_image.image)
+		        #print tot_bg, tot_img, tot_bg/tot_img
+		        #print np.max(bg_image), np.max(self.rp_image.image), np.max(bg_image)/ np.max(self.rp_image.image)
+			if(tot_bg > tol_fac*tot_img):
+			    seed+=1
+
+
+		
 	        new_image = bg_image + self.rp_image.image
 	        new_image[ new_image < self.rp_image.image.min() ] = self.rp_image.image.min()
+		if (new_image.mean() > (5*self.rp_image.image.mean()) ):
+			self.bg_failed=True
+		#else:
+		        #print self.rp_image.image.min(), self.rp_image.image.max(), self.rp_image.image.mean()
+		        #print new_image.min(), new_image.max(), new_image.mean()
 	else:
 	        new_image = self.rp_image.image
 
 	if rebin_gz:
 	    new_image = congrid.congrid( new_image, (n_target_pixels, n_target_pixels) )
 	        
-	print new_image.shape
-
 	self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)	
+	return seed
 
 
 
@@ -389,7 +412,9 @@ class synthetic_image:
         #create primary HDU (the "final" image) and save important header information -- may want to verify that I got these right
         #Are there other quantities of interest??
 
-	image = theobj.image		# in muJy / str 
+	myimage = theobj.return_image()		# in muJy / str 
+        image = np.zeros( myimage.shape )
+        image[:,:] = myimage[:,:]
 	print "before converting and saving the image min/max are:"
         print image.min(), image.max(), np.sum(image)
 
@@ -605,14 +630,14 @@ class single_image:
 	image_in_muJy =  self.image  * pixel_in_sr		# should now have muJy
         tot_img_in_Jy = np.sum(image_in_muJy) / 1e6		# now have total image flux in Jy
 	abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
-	print "the ab magnitude of this image is :"+str(abmag)
+#	print "the ab magnitude of this image is :"+str(abmag)
 
-	print " "
-	print " "
-	print "The FoV is :"
-	print self.pixel_in_kpc * self.n_pixels 
-	print ""
-	print " "
+#	print " "
+#	print " "
+#	print "The FoV is :"
+#	print self.pixel_in_kpc * self.n_pixels 
+#	print ""
+#	print " "
 
 
     def calc_ab_abs_zero(self, parent_obj):

@@ -70,6 +70,13 @@ def load_fov(filename):
     hdulist.close()
     return data
 
+def load_camera_angles(filename,camera=0):
+    hdulist = my_fits_open(filename)
+    theta = hdulist['CAMERA'+str(camera)+'-PARAMETERS'].header['theta']
+    phi   = hdulist['CAMERA'+str(camera)+'-PARAMETERS'].header['phi']
+    hdulist.close()
+    return theta,phi
+
 
 def load_broadband_names(filename):
     hdulist = my_fits_open(filename)

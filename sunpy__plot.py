@@ -14,8 +14,12 @@ import os
 import sys
 import sunpy__load			# used for noiseless images, for which we can return the image input directly
 import sunpy__synthetic_image		# used for images with noise, pixel scaling, etc.
+
+import matplotlib
+matplotlib.use('Agg')
+
+
 import matplotlib.pyplot as plt
-import img_scale
 import gc
 
 
@@ -56,21 +60,48 @@ def plot_sdss_gri(filename, savefile='./sdss_gri.png', **kwargs):
 def return_synthetic_sdss_gri_img(filename, 
 				lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, 
                                 b_fac=0.7, g_fac=1.0, r_fac=1.3,
+				seed_boost=1.0,
 				**kwargs):
 
-    seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
-    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
+
+    fail_flag=True		# looks for "bad" backgrounds, and tells us to try again
+    n_iter = 1
+    while(fail_flag and (n_iter < 4)):
+        fail_flag=False
+        seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])*(n_iter)*seed_boost
+        n_iter+=1
+
+        b_image, rp, the_used_seed,this_fail_flag    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
 				seed=seed,
 				r_petro_kpc=None, 
+				fix_seed=False,
 				**kwargs)
-    g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
-				seed=seed,
-				r_petro_kpc=rp, 
+        if(this_fail_flag):
+	  fail_flag=True
+        #print " "
+        #print "the used seed:"
+        #print the_used_seed
+        g_image, dummy, the_used_seed,this_fail_flag = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
+				seed=the_used_seed,
+				r_petro_kpc=rp,
+				fix_seed=True, 
 				**kwargs)
-    r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
-                                seed=seed,
-				r_petro_kpc=rp, 
+        if(this_fail_flag):
+          fail_flag=True
+        #print " "
+        #print "the used seed:"
+        #print the_used_seed
+        r_image, dummy, the_used_seed, this_fail_flag = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
+                                seed=the_used_seed,
+				r_petro_kpc=rp,
+				fix_seed=True, 
 				**kwargs)
+        if(this_fail_flag):
+            fail_flag=True
+        #print " "
+        #print "the used seed:"
+        #print the_used_seed
+
 
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
@@ -115,29 +146,30 @@ def return_synthetic_sdss_gri_img(filename,
     img[img<0] = 0
     return rp, img
 
+
 def return_synthetic_hst_img(filename,
                                 lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4,
                                 b_fac=1.0, g_fac=1.0, r_fac=1.0,
                                 **kwargs):
 
     seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])
-    b_image, rp    = sunpy__synthetic_image.build_synthetic_image(filename, 22,		#25,
-                                seed=seed,
+    b_image, rp, dummy, dummy    = sunpy__synthetic_image.build_synthetic_image(filename, 22,		#25,
+                                seed=seed, fix_seed=True,
                                 r_petro_kpc=None,
                                 **kwargs)
-    g_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 26,
-                                seed=seed,
-                                r_petro_kpc=rp,
-                                **kwargs)
-    r_image, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 27,
-                                seed=seed,
+    dummy, dummy, dummy, dummy  = sunpy__synthetic_image.build_synthetic_image(filename, 25,
+                                seed=seed, fix_seed=True,
                                 r_petro_kpc=rp,
                                 **kwargs)
 
-    print b_image.min(), b_image.max()
-    print g_image.min(), g_image.max()
-    print r_image.min(), r_image.max()
-
+    g_image, dummy, dummy, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 26,
+                                seed=seed, fix_seed=True,
+                                r_petro_kpc=rp,
+                                **kwargs)
+    r_image, dummy, dummy, dummy = sunpy__synthetic_image.build_synthetic_image(filename, 27,
+                                seed=seed, fix_seed=True,
+                                r_petro_kpc=rp,
+                                **kwargs)
 
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
@@ -204,9 +236,9 @@ def return_sdss_gri_img(filename,camera=0,scale_min=0.1,scale_max=50,size_scale=
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
 
-    img[:,:,0] = img_scale.asinh(r_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
-    img[:,:,1] = img_scale.asinh(g_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
-    img[:,:,2] = img_scale.asinh(b_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
+    img[:,:,0] = asinh(r_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
+    img[:,:,1] = asinh(g_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
+    img[:,:,2] = asinh(b_image, scale_min=scale_min, scale_max=scale_max,non_linear=non_linear)
     img[img<0] = 0
 
     del b_image, g_image, r_image
@@ -223,7 +255,7 @@ def return_h_band_img(filename,camera=0,scale_min=0.1,scale_max=50,size_scale=1.
     image = sunpy__load.load_broadband_image(filename,band='H_Johnson.res', camera=camera) 
     n_pixels = image.shape[0]
     img = np.zeros((n_pixels, n_pixels), dtype=float)
-    img[:,:] = img_scale.asinh(image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
+    img[:,:] = asinh(image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
     img[img<0] = 0
     return img
 
@@ -243,9 +275,9 @@ def return_johnson_uvk_img(filename,camera=0,scale_min=0.1,scale_max=50,size_sca
 
     n_pixels
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)
-    img[:,:,0] = img_scale.asinh(r_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
-    img[:,:,1] = img_scale.asinh(g_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
-    img[:,:,2] = img_scale.asinh(b_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
+    img[:,:,0] = asinh(r_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
+    img[:,:,1] = asinh(g_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
+    img[:,:,2] = asinh(b_image, scale_min=scale_min, scale_max=scale_max,non_linear=0.5)
     img[img<0] = 0
     return img
 
@@ -254,7 +286,7 @@ def return_stellar_mass_img(filename, camera=0, scale_min=1e8, scale_max=1e10, s
     image = sunpy__load.load_stellar_mass_map(filename, camera=camera)
     n_pixels = image.shape[0]
     img = np.zeros((n_pixels, n_pixels), dtype=float)
-    img[:,:] = img_scale.asinh(image, scale_min=scale_min, scale_max=scale_max, non_linear=non_linear)
+    img[:,:] = asinh(image, scale_min=scale_min, scale_max=scale_max, non_linear=non_linear)
     img[img<0] = 0
     return img
 
@@ -287,3 +319,21 @@ def my_save_image(img, savefile, opt_text=None):
         plt.close()
         del img
         gc.collect()
+
+
+def asinh(inputArray, scale_min=None, scale_max=None, non_linear=2.0):
+        imageData=numpy.array(inputArray, copy=True)
+
+        if scale_min == None:
+                scale_min = imageData.min()
+        if scale_max == None:
+                scale_max = imageData.max()
+        factor = numpy.arcsinh((scale_max - scale_min)/non_linear)
+        indices0 = numpy.where(imageData < scale_min)
+        indices1 = numpy.where((imageData >= scale_min) & (imageData <= scale_max))
+        indices2 = numpy.where(imageData > scale_max)
+        imageData[indices0] = 0.0
+        imageData[indices2] = 1.0
+        imageData[indices1] = numpy.arcsinh((imageData[indices1] - scale_min)/non_linear)/factor
+
+        return imageData
