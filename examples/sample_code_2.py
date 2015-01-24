@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+"""  An examle script to download, open, and plot an image
+     from the Illustris Image host site.  This routine also 
+     adds images realism to create mock SDSS images by co-adding 
+     real SDSS backgrounds.
+
+     Author:  P. Torrey (ptorrey@mit.edu) 1/24/15
+"""
+
+import numpy as np
+import wget
+import sunpy.sunpy__load as sunpy__load
+import sunpy.sunpy__plot as sunpy__plot
+import sunpy.sunpy__synthetic_image as sunpy__synthetic_image
+import os
+
+dl_base='http://illustris.rc.fas.harvard.edu/data/'
+
+try:
+    catalog = np.loadtxt('directory_catalog_135.txt',
+		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
+                           'formats': ('S3', 'i10', 'f8')})
+except:
+    wget.download(dl_base+"illustris_images_aux/directory_catalog_135.txt")
+    catalog = np.loadtxt('directory_catalog_135.txt',
+		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
+	                   'formats': ('S3', 'i10','f8')})
+
+all_subdirs = catalog['subdirs']
+all_galnrs  = catalog['galaxy_numbers']
+
+
+common_args = { 
+                'add_background':       False,          # default option = False, turn on one-by-one
+                'add_noise':            False,
+                'add_psf':              False,
+                'rebin_phys':           False,
+                'resize_rp':            False,
+                'rebin_gz':             True,           # always true, all pngs 424x424
+                'scale_min':            1e-10,          # was 1e-4
+                'lupton_alpha':         2e-12,          # was 1e-4
+                'lupton_Q':             10,             # was ~100
+                'pixelsize_arcsec':     0.24,
+                'psf_fwhm_arcsec':      1.0,
+                'sn_limit':             25.0,           # super low noise value, dominated by background
+                'sky_sig':              None,           #
+                'redshift':             0.05,           # 
+                'b_fac':                1.1, 
+                'g_fac':                1.0, 
+                'r_fac':                0.9,
+                'camera':               1,
+                'seed_boost':           1.0,
+                'save_fits':            True
+                }
+
+
+def restore_common_args():
+    common_args['rebin_phys']           = False
+    common_args['add_psf']              = False
+    common_args['add_background']       = False        
+    common_args['add_noise']            = False
+
+
+for index,galnr in enumerate(all_galnrs[:1]):
+    url=dl_base+"illustris_images/subdir_"+str(all_subdirs[index])+"/broadband_"+str(galnr)+".fits"
+    
+    filename = wget.download(url)
+
+    sunpy__synthetic_image.download_backgrounds()
+
+    sunpy__plot.plot_sdss_gri(filename, savefile='./sdss_gri_'+str(galnr)+'.png')
+    sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_0_sdss_gri_'+str(galnr)+'.png' , **common_args)
+
+    common_args['rebin_phys'] = True
+    sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_1_sdss_gri_'+str(galnr)+'.png' , **common_args)
+
+    common_args['add_psf'] = True
+    sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_2_sdss_gri_'+str(galnr)+'.png' , **common_args)
+
+    common_args['add_background'] = True
+    common_args['add_noise'] = True
+    sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_3_sdss_gri_'+str(galnr)+'.png' , **common_args)
+
+
