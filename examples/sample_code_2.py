@@ -11,7 +11,6 @@ import numpy as np
 import wget
 import sunpy.sunpy__load as sunpy__load
 import sunpy.sunpy__plot as sunpy__plot
-import sunpy.sunpy__synthetic_image as sunpy__synthetic_image
 import os
 
 dl_base='http://illustris.rc.fas.harvard.edu/data/'
@@ -65,8 +64,6 @@ for index,galnr in enumerate(all_galnrs[:1]):
     url=dl_base+"illustris_images/subdir_"+str(all_subdirs[index])+"/broadband_"+str(galnr)+".fits"
     
     filename = wget.download(url)
-
-    sunpy__synthetic_image.download_backgrounds()
 
     sunpy__plot.plot_sdss_gri(filename, savefile='./sdss_gri_'+str(galnr)+'.png')
     sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_0_sdss_gri_'+str(galnr)+'.png' , **common_args)
