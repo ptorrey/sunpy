@@ -66,7 +66,7 @@ def return_synthetic_sdss_gri_img(filename,
 
     fail_flag=True		# looks for "bad" backgrounds, and tells us to try again
     n_iter = 1
-    while(fail_flag and (n_iter < 4)):
+    while(fail_flag and (n_iter < 2)):
         fail_flag=False
         seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])*(n_iter)*seed_boost
         n_iter+=1
@@ -76,11 +76,17 @@ def return_synthetic_sdss_gri_img(filename,
 				r_petro_kpc=None, 
 				fix_seed=False,
 				**kwargs)
+
+
+	print " "
+	print " "
+	print " The blue image has been set"
+	print " The stored value for rp = "+str(rp)
+	print " "
+	print " "
         if(this_fail_flag):
 	  fail_flag=True
-        #print " "
-        #print "the used seed:"
-        #print the_used_seed
+
         g_image, dummy, the_used_seed,this_fail_flag = sunpy__synthetic_image.build_synthetic_image(filename, 'r_SDSS.res', 
 				seed=the_used_seed,
 				r_petro_kpc=rp,
@@ -88,9 +94,16 @@ def return_synthetic_sdss_gri_img(filename,
 				**kwargs)
         if(this_fail_flag):
           fail_flag=True
-        #print " "
-        #print "the used seed:"
-        #print the_used_seed
+
+
+        print " "
+        print " "
+        print " The green image has been set"
+        print " The stored value for rp = "+str(rp)
+        print " "
+        print " "
+
+
         r_image, dummy, the_used_seed, this_fail_flag = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
                                 seed=the_used_seed,
 				r_petro_kpc=rp,
@@ -98,10 +111,6 @@ def return_synthetic_sdss_gri_img(filename,
 				**kwargs)
         if(this_fail_flag):
             fail_flag=True
-        #print " "
-        #print "the used seed:"
-        #print the_used_seed
-
 
     n_pixels = r_image.shape[0]
     img = np.zeros((n_pixels, n_pixels, 3), dtype=float)

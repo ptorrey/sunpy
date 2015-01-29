@@ -222,11 +222,14 @@ class synthetic_image:
 
 	end_time   = time.time()
         if verbose:
+	    print " "
+	    print " "
 	    print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+ 	    print "preparing to save "+filename[:filename.index('broadband')]+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 
 	if save_fits:
 	    orig_dir=filename[:filename.index('broadband')]
-	    outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'.fits'
+	    outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 	    self.save_bgimage_fits(outputfitsfile)
 
 
@@ -282,10 +285,12 @@ class synthetic_image:
 
 
     def calc_r_petro(self, r_petro_kpc=None, resize_rp=True):		# rename to "set_r_petro"
-	if ( (r_petro_kpc==None) & (resize_rp==True) ):
+        if ( resize_rp==False):
+	    r_petro_kpc = 1.0;
+	elif ( r_petro_kpc==None ):
             i=0
 	
-	    image_to_use 	= self.noisy_image.image_in_nmaggies
+	    image_to_use 	= self.noisy_image.image		#_in_nmaggies
 	    RadiusObject 	= RadialInfo(self.noisy_image.n_pixels)
             PetroRatio 		= np.ones_like(RadiusObject.RadiusGrid)
             sumI_r 		= np.zeros_like(RadiusObject.RadiusGrid)
@@ -302,7 +307,8 @@ class synthetic_image:
             PetroRadius = np.flipud(RadiusObject.RadiusGrid)[Pind]
 	    r_petro_kpc = PetroRadius * self.noisy_image.pixel_in_kpc
 	else:
-	    r_petro_kpc = 1.0
+	    r_petro_kpc = r_petro_kpc
+
 
 	r_petro_pixels = r_petro_kpc / self.noisy_image.pixel_in_kpc	
 
@@ -312,51 +318,41 @@ class synthetic_image:
 
     def resize_image_from_rp(self, resize_rp=True):
 	if resize_rp:
-	    rp_pixel_in_kpc = 0.016 * self.r_petro_kpc			# P. Torrey -- this is my target scale; was 0.008, upping to 0.016 for GZ based on feedback
-	    Ntotal_new = (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels
+	    rp_pixel_in_kpc = 0.008 * self.r_petro_kpc	# The target scale; was 0.008, upping to 0.016 for GZ based on feedback
+	    Ntotal_new = int( (self.noisy_image.pixel_in_kpc / rp_pixel_in_kpc ) * self.noisy_image.n_pixels )
 	    rebinned_image = congrid(self.noisy_image.image            ,  (Ntotal_new, Ntotal_new) )
 
 	    diff = n_pixels_galaxy_zoo - Ntotal_new		#
-
-            if diff >= 0:		# P. Torrey.  --  desired FOV is larger than already rendered... 
-					# this is not a problem is image edges have ~0 flux.  
-					# Otherwise, can cause artifacts.
-                shift = 0
-                shiftc = np.floor(1.0*diff/2.0)
-	        fake_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
-                fake_image[shiftc:shiftc+Ntotal_new,shiftc:shiftc+Ntotal_new] = rebinned_image[0:Ntotal_new, 0:Ntotal_new]
-                rp_image = fake_image
-
-	        rp_image = congrid(self.noisy_image.image_in_nmaggies,  (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+            if diff >= 0:
+                shift = int(np.floor(1.0*diff/2.0))
+		lp = shift
+		up = shift + Ntotal_new
+	        tmp_image = np.zeros( (n_pixels_galaxy_zoo, n_pixels_galaxy_zoo) )
+                tmp_image[lp:up,lp:up] = rebinned_image[0:Ntotal_new, 0:Ntotal_new]
+                rp_image = tmp_image
             else:
-                shift = np.floor(-1.0*diff/2.0)
-                rp_image = rebinned_image[shift:shift+n_pixels_galaxy_zoo,shift:shift+n_pixels_galaxy_zoo]
+                shift = int( np.floor(-1.0*diff/2.0) )
+                lp = int(shift)
+		up = int(shift+n_pixels_galaxy_zoo)
+                rp_image = rebinned_image[lp:up, lp:up]	
 
-	    self.rp_image.init_image(rp_image, self, fov = 424.0*(0.016 * self.r_petro_kpc) )
+	    self.rp_image.init_image(rp_image, self, fov = 424.0*(0.008 * self.r_petro_kpc) )
 	else:
 	    self.rp_image.init_image(self.noisy_image.image, self, fov=self.noisy_image.pixel_in_kpc*self.noisy_image.n_pixels)
 
 	
     def add_background(self, seed=1, add_background=True, rebin_gz=False, n_target_pixels=424, fix_seed=True):
-	print " "
-	print "adding background?!?!"
-	print ""
 	if add_background and (len(backgrounds[self.band]) > 0):
-		print "Yes!"
-
 		bg_image = 10.0*self.rp_image.image		# dummy values for while loop condition
 
 		tot_bg = np.sum(bg_image)
                 tot_img= np.sum(self.rp_image.image)
 		tol_fac = 1.0
 
-		print tot_bg, tol_fac*tot_img
 		while(tot_bg > tol_fac*tot_img):	
 
 	    #=== load *full* bg image, and its properties ===#  
 	            bg_filename = (backgrounds[self.band])[0]
-		    print " "
-		    print " "
 		    if not (os.path.isfile(bg_filename)):
 		        print "  Background files were not found...  "
                         print "  The standard files used in Torrey al. (2015), Snyder et al., (2015) and Genel et al., (2014) ..."
@@ -368,8 +364,6 @@ class synthetic_image:
 			print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-z.fits "
 			print "  "
 			print "  Contact Paul Torrey (ptorrey@mit.edu) or Greg Snyder (gsnyder@stsci.edu) with further questions "
-		    print " "
-		    print " "
                     file = pyfits.open(bg_filename) ; 
                     header = file[0].header ; 
                     pixsize = get_pixelsize_arcsec(header) ; 
@@ -434,8 +428,6 @@ class synthetic_image:
     def save_bgimage_fits(self,outputfitsfile, save_img_in_muJy=False):
 	""" Written by G. Snyder 8/4/2014 to output FITS files from Sunpy module """
         theobj = self.bg_image
-        #create primary HDU (the "final" image) and save important header information -- may want to verify that I got these right
-        #Are there other quantities of interest??
 
 	myimage = theobj.return_image()		# in muJy / str 
         image = np.zeros( myimage.shape )
@@ -448,7 +440,7 @@ class synthetic_image:
 	image *= pixel_area_in_str      # in muJy 
         if save_img_in_muJy == False:
 	    if len(bg_zpt[self.band]) > 0:
-                image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) )
+                image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) ) 
 	else:
 	    ' '
 	    'saving image in muJy!!!!!'
@@ -456,11 +448,6 @@ class synthetic_image:
 
 	print "before saving the image min/max are:"
 	print image.min(), image.max(), np.sum(image) 
-
-#bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))
-#pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
-#bg_image = bg_image_muJy / pixel_area_in_str
-
 
         primhdu = pyfits.PrimaryHDU(image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
         primhdu.header.update('ABABSZP',22.5,'For Final Image')  #THIS SHOULD BE CORRECT FOR NANOMAGGIE IMAGES ONLY
@@ -525,7 +512,7 @@ def get_pixelsize_arcsec(header):
 class RadialInfo:
     """ Class for giving radial profile info for rp calcultions """
     def __init__(self,N):
-        self.RadiusGrid = np.linspace(0.0001,1.5*N,num=40)
+        self.RadiusGrid = np.linspace(0.0001,1.5*N,num=400)
         self.Npix = N
         self.annulus_indices = []
         self.interior_indices = []

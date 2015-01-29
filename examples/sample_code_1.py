@@ -36,7 +36,10 @@ for index,galnr in enumerate(all_galnrs[:1]):
     print "  path="+url
     print " "
     
-    filename = wget.download(url)
+    if( !(os.path.isfile("./broadband_"+str(galnr)+".fits")) )
+        filename = wget.download(url)
+    else:
+        filename = "./broadband_"+str(galnr)+".fits"
 
     # retrieve the image.  Could be used for non-parametric fitting, plotting, etc.
     image = sunpy__load.load_broadband_image(filename,band='B_Johnson.res')
