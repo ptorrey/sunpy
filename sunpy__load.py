@@ -11,7 +11,17 @@ For usage examples, see the plotting routines in sunpy__plot.
 import numpy as np
 import os
 import sys
-import astropy.io.fits as fits
+try:
+    import pyfits as fits
+    print "loaded pyfits"
+except:
+    try:
+        import astropy.io.fits as fits
+        print "loaded astropy.io.fits"
+    except:
+        print "Error: Unable to access PyFITS or AstroPy modules.\n\n"+"With root access, add PyFITS to your site-packages with:\n\n"+"% pip install pyfits\n"+"or\n"+"% easy_install pyfits\n\n"+"or download at: www.stsci.edu/institute/software_hardware/pyfits/Download\n"+"where additional installation options and instructions can be found."
+
+#import astropy.io.fits as fits
 import cosmocalc			# http://cxc.harvard.edu/contrib/cosmocalc/
 import scipy as sp
 import scipy.ndimage
@@ -27,17 +37,10 @@ __version__ = "1.0"
 __maintainer__ = "Paul Torrey"
 __email__ = "ptorrey@cfa.harvard.edu"
 __status__ = "Production"
-if __name__ == '__main__':    #code to execute if called from command-line
-    pass    #do nothing 
+if __name__ == '__main__':
+    pass
 
-
-#abs_dist        = 0.01          # 10 pc in units of kpc
-#erg_per_joule   = 1e7
 speedoflight_m  = 2.99e8
-#m2_to_cm2       = 1.0e-4
-#n_arcsec_per_str = 4.255e10             # (radian per arc second)^2
-#n_pixels_galaxy_zoo = 424
-
 
 def my_fits_open(filename):
     if (not os.path.exists(filename)):
