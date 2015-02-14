@@ -4,26 +4,23 @@ routines for plotting images from the SUNRISE data output
 
 Example usage:
 
+import sunpy.sunpy__plot as sunplot
+
+sunplot.plot_synthetic_sdss_gri('broadband_1234.fits')
+sunplot.plot_sdss_gri('broadband_1234.fits')
+
 Dependencies:
-
+  numpy
+  matplotlib
 """
-
 
 import numpy as np
 import os
 import sys
 import sunpy__load			# used for noiseless images, for which we can return the image input directly
 import sunpy__synthetic_image		# used for images with noise, pixel scaling, etc.
-
-import matplotlib
-matplotlib.use('Agg')
-
-
 import matplotlib.pyplot as plt
 import gc
-
-
-
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
@@ -61,8 +58,8 @@ def return_synthetic_sdss_gri_img(filename,
 				lupton_alpha=0.5, lupton_Q=0.5, scale_min=1e-4, 
                                 b_fac=0.7, g_fac=1.0, r_fac=1.3,
 				seed_boost=1.0,
+			 	r_petro_kpc=None,
 				**kwargs):
-
 
     fail_flag=True		# looks for "bad" backgrounds, and tells us to try again
     n_iter = 1
@@ -71,19 +68,12 @@ def return_synthetic_sdss_gri_img(filename,
         seed=int(filename[filename.index('broadband_')+10:filename.index('.fits')])*(n_iter)*seed_boost
         n_iter+=1
 
+
         b_image, rp, the_used_seed,this_fail_flag    = sunpy__synthetic_image.build_synthetic_image(filename, 'g_SDSS.res', 
 				seed=seed,
-				r_petro_kpc=None, 
+				r_petro_kpc=r_petro_kpc, 
 				fix_seed=False,
 				**kwargs)
-
-
-	print " "
-	print " "
-	print " The blue image has been set"
-	print " The stored value for rp = "+str(rp)
-	print " "
-	print " "
         if(this_fail_flag):
 	  fail_flag=True
 
@@ -94,15 +84,6 @@ def return_synthetic_sdss_gri_img(filename,
 				**kwargs)
         if(this_fail_flag):
           fail_flag=True
-
-
-        print " "
-        print " "
-        print " The green image has been set"
-        print " The stored value for rp = "+str(rp)
-        print " "
-        print " "
-
 
         r_image, dummy, the_used_seed, this_fail_flag = sunpy__synthetic_image.build_synthetic_image(filename, 'i_SDSS.res', 
                                 seed=the_used_seed,
@@ -146,8 +127,6 @@ def return_synthetic_sdss_gri_img(filename,
     img[changind,2] = 0
     img[img<0] = 0
 
-    print "img min/max/mean "+str(img.min())+"  "+str(img.max())+"  "+str(img.mean())
-    print " "
 
     del b_image, g_image, r_image, I, val
     gc.collect()

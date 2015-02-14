@@ -16,6 +16,7 @@ import numpy as np
 import os
 import sys
 import math
+import gc
 
 try:
     import pyfits as fits
@@ -25,10 +26,13 @@ except:
         import astropy.io.fits as fits
         print "loaded astropy.io.fits"
     except:
-        print "Error: Unable to access PyFITS or AstroPy modules.\n\n"+"With root access, add PyFITS to your site-packages with:\n\n"+"% pip install pyfits\n"+"or\n"+"% easy_install pyfits\n\n"+"or download at: www.stsci.edu/institute/software_hardware/pyfits/Download\n"+"where additional installation options and instructions can be found."
-
-#import astropy.io.fits as fits
-#import pyfits
+        print "Error: Unable to access PyFITS or AstroPy modules."
+        print "Add PyFITS to your site-packages with:"
+        print "% pip install pyfits\n"
+        print "  or  "
+        print "% easy_install pyfits\n"
+        print "  or  "
+        print "download at: www.stsci.edu/institute/software_hardware/pyfits/Download\n"
 
 
 import cosmocalc
@@ -42,6 +46,7 @@ import time
 import cosmocalc
 
 import wget
+import warnings
 
 __author__ = "Paul Torrey and Greg Snyder"
 __copyright__ = "Copyright 2014, The Authors"
@@ -54,7 +59,7 @@ __status__ = "Production"
 if __name__ == '__main__':    #code to execute if called from command-line
     pass    #do nothing 
 
-verbose=True
+verbose=False
 
 
 abs_dist        = 0.01         
@@ -120,7 +125,16 @@ bg_zpt = [ [], [],                 # GALEX
 def build_synthetic_image(filename, band, r_petro_kpc=None, **kwargs):
     """ build a synthetic image from a SUNRISE fits file and return the image to the user """
     obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, **kwargs)
-    return obj.bg_image.return_image(), obj.r_petro_kpc, obj.seed, obj.bg_failed
+
+    image = obj.bg_image.return_image()
+    rp    = obj.r_petro_kpc
+    seed  = obj.seed
+    failed= obj.bg_failed
+
+    del obj
+    gc.collect() 
+    
+    return image, rp, seed, failed   
 
 def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, seed=12345, n_bands=36, **kwargs):
     """ loads n_band x n_pix x n_pix image array with apparent mags for synthetic images """
@@ -135,7 +149,6 @@ def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, se
 	all_images[band, :, :] = img			# muJy / str
 
         pixel_in_sr = (1e3*obj.bg_image.pixel_in_kpc /10.0)**2
-
     
     all_images *=  pixel_in_sr / 1e6    	# in Jy
 
@@ -151,6 +164,10 @@ def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, se
     dist = (cosmocalc.cosmocalc(redshift, H0=70.4, WM=0.2726, WV=0.7274))['DL_Mpc'] * 1e6
     dist_modulus = 5.0 * ( np.log10(dist) - 1.0 )
     apparent_magnitudes = dist_modulus + all_images
+
+    del mags, obj, img, n_pixels, all_images, pixel_in_sr, tot_img_in_Jy, abmag, dist, dist_modulus
+    gc.collect()
+
     return apparent_magnitudes
 
 
@@ -171,8 +188,9 @@ class synthetic_image:
             resize_rp=True,
             sn_limit=25.0,
             sky_sig=None,
-            verbose=True,
+            verbose=False,
             fix_seed=True,
+	    bg_tag=None,
             **kwargs):
 
         if (not os.path.exists(filename)):
@@ -233,14 +251,19 @@ class synthetic_image:
         self.seed = self.add_background(seed=self.seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels, fix_seed=fix_seed)
 
         end_time   = time.time()
+#        print "init images + adding realism took "+str(end_time - start_time)+" seconds"
         if verbose:
-            print "init images + adding realism took "+str(end_time - start_time)+" seconds"
             print "preparing to save "+filename[:filename.index('broadband')]+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 
         if save_fits:
             orig_dir=filename[:filename.index('broadband')]
-            outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
+            if bg_tag!=None:
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
+            else:
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
             self.save_bgimage_fits(outputfitsfile)
+        del self.sunrise_image, self.psf_image, self.rebinned_image, self.noisy_image, self.nmag_image, self.rp_image
+        gc.collect()
 
 
     def add_gaussian_psf(self, add_psf=True, sample_factor=1.0):		# operates on sunrise_image -> creates psf_image
@@ -268,8 +291,10 @@ class synthetic_image:
             current_psf_sigma_pixels, output=psf_image, mode='constant')
 
             self.psf_image.init_image(psf_image, self)
+            del new_image, psf_image, dummy
         else:
             self.psf_image.init_image(self.sunrise_image.image, self)
+        gc.collect()
 
 
     def rebin_to_physical_scale(self, rebin_phys=True):
@@ -277,8 +302,11 @@ class synthetic_image:
 	    n_pixel_new = np.floor( ( self.psf_image.pixel_in_arcsec / self.telescope.pixelsize_arcsec )  * self.psf_image.n_pixels )
 	    rebinned_image = congrid(self.psf_image.image,  (n_pixel_new, n_pixel_new) )
   	    self.rebinned_image.init_image(rebinned_image, self) 
+            del n_pixel_new, rebinned_image
+            gc.collect()
 	else:
 	    self.rebinned_image.init_image(self.psf_image.image, self)
+       
 
     def add_noise(self, add_noise=True, sky_sig=None, sn_limit=25.0):
 	if add_noise:
@@ -290,6 +318,8 @@ class synthetic_image:
 	    noise_image 	=  sky_sig * np.random.randn( self.rebinned_image.n_pixels, self.rebinned_image.n_pixels ) 
 	    new_image = self.rebinned_image.image + noise_image
 	    self.noisy_image.init_image(new_image, self)
+            del noise_image, new_image
+            gc.collect()
 	else:
 	    self.noisy_image.init_image(self.rebinned_image.image, self)
 
@@ -297,15 +327,22 @@ class synthetic_image:
 
 
     def calc_r_petro(self, r_petro_kpc=None, resize_rp=True):		# rename to "set_r_petro"
+        " this routine is not working well.  Must manually set r_p until this is fixed..."
         if ( resize_rp==False ):
             r_petro_kpc = 1.0
         elif(r_petro_kpc==None):
-            RadiusObject 	= RadialInfo(self.noisy_image.n_pixels, self.noisy_image.image)
+            #RadiusObject 	= RadialInfo(self.noisy_image.n_pixels, self.noisy_image.image)
             r_petro_kpc = RadiusObject.PetroRadius * self.noisy_image.pixel_in_kpc    # do this outside of the RadialInfo class'
             if verbose:
                 print " we've calculated a r_p of "+str(r_petro_kpc)
+            del RadiusObject
+            gc.collect()
         else:
             r_petro_kpc = r_petro_kpc
+            if r_petro_kpc < 3.0:
+                r_petro_kpc = 3.0
+            if r_petro_kpc > 100.0:
+                r_petro_kpc = 100.0
 
 
         r_petro_pixels = r_petro_kpc / self.noisy_image.pixel_in_kpc
@@ -342,6 +379,8 @@ class synthetic_image:
 
 
             self.rp_image.init_image(rp_image, self, fov = (1.0*n_pixels_galaxy_zoo)*(resize_factor * self.r_petro_kpc) )
+            del rebinned_image, rp_image
+            gc.collect()
         else:
             self.rp_image.init_image(self.noisy_image.image, self, fov=self.noisy_image.pixel_in_kpc*self.noisy_image.n_pixels)
 
@@ -363,9 +402,6 @@ class synthetic_image:
                     print "  can be downloaded using the download_backgrounds routine or manually from:  "
                     print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-u.fits "
                     print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-g.fits "
-                    print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-r.fits "
-                    print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-i.fits "
-                    print "     http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds/SDSS_backgrounds/J113959.99+300000.0-z.fits "
                     print "  "
             
                 file = fits.open(bg_filename) ;       # was pyfits.open(bg_filename) ;
@@ -375,25 +411,18 @@ class synthetic_image:
                     
                     #=== figure out how much of the image to extract ===#
                 Npix_get = np.floor(self.rp_image.n_pixels * self.rp_image.pixel_in_arcsec / pixsize)
-                    
-                    #   if (Npix_get > self.rp_image.n_pixels):	# P. Torrey 9/10/14   -- sub optimal, but avoids strange noise ...
-                    #   Npix_get = self.rp_image.n_pixels	#		... in the images.  Could cause problems for automated analysis?
   
                 im = file[0].data 	# this is in some native units (nmaggies, for SDSS )
                 halfval_i = np.floor(np.float(Nx)/1.3)
                 halfval_j = np.floor(np.float(Ny)/1.3)
                 np.random.seed(seed=int(seed))
-
                 starti = np.random.random_integers(5,halfval_i)
                 startj = np.random.random_integers(5,halfval_j)
-
                 bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]        # the extracted patch...
-
                 #=== need to convert to microJy / str ===#
                 bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))       # if you got your zero points right, this is now in muJy
                 pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
                 bg_image = bg_image_muJy / pixel_area_in_str
-
                 #=== need to rebin bg_image  ===#
                 bg_image = congrid(bg_image, (self.rp_image.n_pixels, self.rp_image.n_pixels))
 
@@ -405,13 +434,12 @@ class synthetic_image:
                     tot_img= np.sum(self.rp_image.image)
                     if(tot_bg > tol_fac*tot_img):
                         seed+=1
-            # end of while bg is too bright...
-
 		
             new_image = bg_image + self.rp_image.image
             new_image[ new_image < self.rp_image.image.min() ] = self.rp_image.image.min()
             if (new_image.mean() > (5*self.rp_image.image.mean()) ):
                 self.bg_failed=True
+            del im, bg_image_raw, bg_image_muJy
 
         else:
             new_image = self.rp_image.image
@@ -421,6 +449,8 @@ class synthetic_image:
             new_image = congrid( new_image, (n_target_pixels, n_target_pixels) )
 
         self.bg_image.init_image(new_image, self, fov = self.rp_image.pixel_in_kpc * self.rp_image.n_pixels)
+        del new_image
+        gc.collect()
         return seed
 
 
@@ -428,13 +458,7 @@ class synthetic_image:
     def save_bgimage_fits(self,outputfitsfile, save_img_in_muJy=False):
 	""" Written by G. Snyder 8/4/2014 to output FITS files from Sunpy module """
         theobj = self.bg_image
-
-        myimage = theobj.return_image()		# in muJy / str
-        image = np.zeros( myimage.shape )
-        image[:,:] = myimage[:,:]
-        print "before converting and saving the image min/max are:"
-        print image.min(), image.max(), np.sum(image)
-
+        image = np.copy( theobj.return_image() )		# in muJy / str
 
         pixel_area_in_str = theobj.pixel_in_arcsec**2 / n_arcsec_per_str
         image *= pixel_area_in_str      # in muJy
@@ -443,9 +467,6 @@ class synthetic_image:
                 image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) ) 
         else:
             print 'saving image in muJy!!!!!'
-
-        print "before saving the image min/max are:"
-        print image.min(), image.max(), np.sum(image)
 
         primhdu = fits.PrimaryHDU(image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
         primhdu.header.update('ABABSZP',22.5,'For Final Image')  #THIS SHOULD BE CORRECT FOR NANOMAGGIE IMAGES ONLY
@@ -479,16 +500,13 @@ class synthetic_image:
         #newlist = pyfits.HDUList([primhdu, simhdu])
 
         #create HDU List container
+
         newlist = fits.HDUList([primhdu])
 
-        #save container to file, overwriting as needed
-        newlist.writeto(outputfitsfile,clobber=True)
-
-
-
-
-#    return b_nanomaggies_gridded/b_factor, g_nanomaggies_gridded/g_factor, r_nanomaggies_gridded/r_factor
-
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            #save container to file, overwriting as needed
+            newlist.writeto(outputfitsfile,clobber=True)
 
 def get_pixelsize_arcsec(header):
     cd1_1 = header.get('CD1_1')  # come in degrees	
@@ -550,9 +568,6 @@ class RadialInfo:
             x0 = x0[index_list]
             y0 = y0[index_list]
         
-        #print x0.min(), x0.max()
-        #print y0.min(), y0.max()
-        #print x0.shape
         popt, pcov = curve_fit(my_fit, x0, np.log10(y0))
         y1 = 10.0**(my_fit(self.RadiusGrid, *popt))
         fake_image1 = 10.0**(my_fit(self.rsquare, *popt))
@@ -586,8 +601,6 @@ class RadialInfo:
         self.PetroRadius = np.flipud(self.RadiusGrid)[self.Pind]
         
         if verbose:
-            #print self.PetroRatio
-            #print y1
             print y2
             print " Saving Figure ..."
             import matplotlib.pyplot as plt
@@ -617,7 +630,7 @@ class RadialInfo:
             fig.savefig('temp1.png')
             fig.clf()
             plt.close()
-            print " Figure has been saved ... "
+#            print " Figure has been saved ... "
 
 
 
