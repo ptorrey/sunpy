@@ -191,6 +191,7 @@ class synthetic_image:
             verbose=False,
             fix_seed=True,
 	    bg_tag=None,
+            bb_label='broadband_',
             **kwargs):
 
         if (not os.path.exists(filename)):
@@ -251,16 +252,18 @@ class synthetic_image:
         self.seed = self.add_background(seed=self.seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels, fix_seed=fix_seed)
 
         end_time   = time.time()
-#        print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+        #print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+        num_label = len(bb_label)
+
         if verbose:
-            print "preparing to save "+filename[:filename.index('broadband')]+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
+            print "preparing to save "+filename[:filename.index(bb_label)]+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 
         if save_fits:
             orig_dir=filename[:filename.index('broadband')]
             if bg_tag!=None:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
             else:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
             self.save_bgimage_fits(outputfitsfile)
         del self.sunrise_image, self.psf_image, self.rebinned_image, self.noisy_image, self.nmag_image, self.rp_image
         gc.collect()
