@@ -8,7 +8,7 @@ calculation, and add background image (SDSS only supported at the moment).
 
 
 The majority of the code in this file was developed by Greg Snyder and can be found in
-	 Snyder et al., (XXXX) XXXX, XXXX
+	 Snyder et al., (2015), http://arxiv.org/abs/1502.07747 
 
 
 """
