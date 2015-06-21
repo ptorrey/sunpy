@@ -3,24 +3,26 @@
      from the Illustris Image host site.
 
      Author:  P. Torrey (ptorrey@mit.edu) 1/24/15
+
+     Update:  P. Torrey (ptorrey@mit.edu) 6/21/15 
+		w/ suggestions from Geferson Lucatelli and Connor Bottrell
 """
 
 import numpy as np
 import os
-import wget					# https://pypi.python.org/pypi/wget -- can be installed via PIP
 import sunpy.sunpy__load as sunpy__load		# 
 import sunpy.sunpy__plot as sunpy__plot
 
 
-
-dl_base='http://illustris.rc.fas.harvard.edu/data/'		# the base data directory
+my_api = "enter your own api key here !!!"
+dl_base='http://www.illustris-project.org'
 
 try:
     catalog = np.loadtxt('directory_catalog_135.txt',
 		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
                            'formats': ('S3', 'i10', 'f8')})
-except:
-    wget.download(dl_base+"illustris_images_aux/directory_catalog_135.txt")
+except:  
+    os.system("wget "+dl_base+"/files/directory_catalog_135.txt")
     catalog = np.loadtxt('directory_catalog_135.txt',
 		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
 	                   'formats': ('S3', 'i10','f8')})
@@ -30,16 +32,13 @@ all_subdirs = catalog['subdirs']
 all_galnrs  = catalog['galaxy_numbers']
 
 for index,galnr in enumerate(all_galnrs[:1]):
-    url=dl_base+"illustris_images/subdir_"+str(all_subdirs[index])+"/broadband_"+str(galnr)+".fits"
-
-    print "Want to load galaxy ID="+str(galnr)+" from folder "+str(all_subdirs[index])
-    print "  path="+url
-    print " "
+    cmd = 'wget --content-disposition --header="API-Key: '+my_api+'" "'+dl_base+ \
+	'/api/Illustris-1/snapshots/135/subhalos/'+str(galnr)+  \
+	'/stellar_mocks/broadband.fits"'
     
-    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) )
-        filename = wget.download(url)
-    else:
-        filename = "./broadband_"+str(galnr)+".fits"
+    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) ):
+	os.system(cmd) 
+    filename = "./broadband_"+str(galnr)+".fits"
 
     # retrieve the image.  Could be used for non-parametric fitting, plotting, etc.
     image = sunpy__load.load_broadband_image(filename,band='B_Johnson.res')

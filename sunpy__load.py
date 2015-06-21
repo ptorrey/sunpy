@@ -25,7 +25,6 @@ except:
 import cosmocalc			# http://cxc.harvard.edu/contrib/cosmocalc/
 import scipy as sp
 import scipy.ndimage
-import matplotlib.pyplot as plt
 import sunpy.sunpy__synthetic_image
 
 

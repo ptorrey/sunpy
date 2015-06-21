@@ -8,19 +8,19 @@
 """
 
 import numpy as np
-import wget
 import sunpy.sunpy__load as sunpy__load
 import sunpy.sunpy__plot as sunpy__plot
 import os
 
-dl_base='http://illustris.rc.fas.harvard.edu/data/'
+my_api = "enter your own api key here !!!"
+dl_base='http://www.illustris-project.org'
 
 try:
     catalog = np.loadtxt('directory_catalog_135.txt',
 		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
                            'formats': ('S3', 'i10', 'f8')})
 except:
-    wget.download(dl_base+"illustris_images_aux/directory_catalog_135.txt")
+    os.system("wget "+dl_base+"/files/directory_catalog_135.txt")
     catalog = np.loadtxt('directory_catalog_135.txt',
 		    dtype={'names'  : ('subdirs', 'galaxy_numbers', 'galaxy_masses'),
 	                   'formats': ('S3', 'i10','f8')})
@@ -61,12 +61,17 @@ def restore_common_args():
 
 
 for index,galnr in enumerate(all_galnrs[:1]):
-    url=dl_base+"illustris_images/subdir_"+str(all_subdirs[index])+"/broadband_"+str(galnr)+".fits"
-    
-    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) )
-        filename = wget.download(url)
-    else:
-        filename = "./broadband_"+str(galnr)+".fits"
+    cmd = 'wget --content-disposition --header="API-Key: '+my_api+'" "'+dl_base+ \
+        '/api/Illustris-1/snapshots/135/subhalos/'+str(galnr)+  \
+        '/stellar_mocks/broadband.fits"'
+
+    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) ):
+	print "trying to download"
+        os.system(cmd)
+	print "did it download?"
+
+    filename = "./broadband_"+str(galnr)+".fits"
+
 
     sunpy__plot.plot_sdss_gri(filename, savefile='./sdss_gri_'+str(galnr)+'.png')
     sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_0_sdss_gri_'+str(galnr)+'.png' , **common_args)
