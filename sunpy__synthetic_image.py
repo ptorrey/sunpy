@@ -8,7 +8,7 @@ calculation, and add background image (SDSS only supported at the moment).
 
 
 The majority of the code in this file was developed by Greg Snyder and can be found in
-	 Snyder et al., (XXXX) XXXX, XXXX
+	 Snyder et al., (2015), http://arxiv.org/abs/1502.07747 
 
 
 """
@@ -35,15 +35,28 @@ except:
         print "download at: www.stsci.edu/institute/software_hardware/pyfits/Download\n"
 
 
+
 import cosmocalc
 import scipy as sp
 import scipy.ndimage
 import scipy.signal
 import scipy.interpolate
 
+
+
+try:
+    import astropy.convolution.convolve as convolve ; CONVOLVE_TYPE='astropy'
+    print "loaded astropy.convolution.convolve"
+except:
+    try:
+        from scipy.signal import convolve2d as convolve ; CONVOLVE_TYPE='scipy'
+        print "loaded scipy.signal.convolve2d; note that the astropy.convolution.convolve() function is preferred. There may be unexpected sub-pixel or off-by-one behavior with this scipy function."
+    except:
+        print "Error: Unable to access SciPy or AstroPy convolution modules."
+
+
 import sunpy.sunpy__load
 import time
-import cosmocalc
 
 import wget
 import warnings
@@ -191,6 +204,9 @@ class synthetic_image:
             verbose=False,
             fix_seed=True,
 	    bg_tag=None,
+            bb_label='broadband_',
+            psf_fits=None,
+            psf_pixsize_arcsec=None,
             **kwargs):
 
         if (not os.path.exists(filename)):
@@ -200,7 +216,7 @@ class synthetic_image:
         start_time = time.time()
         self.filename  = filename
         self.cosmology = cosmology(redshift)
-        self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec)
+        self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec, rebin_phys, add_psf)
 
         band_names  = sunpy.sunpy__load.load_broadband_names(filename)
         hdulist = fits.open(filename)
@@ -240,7 +256,9 @@ class synthetic_image:
         self.sunrise_image.init_image(this_image, self, comoving_to_phys_fov=False)
             # assume now that all images are in micro-Janskies per str
 
-        self.add_gaussian_psf(add_psf=add_psf)
+        self.convolve_with_psf(add_psf=add_psf)
+
+        #self.add_gaussian_psf(add_psf=add_psf)  add_gaussian_psf now called in convolve_with_psf, if appropriate
         self.rebin_to_physical_scale(rebin_phys=rebin_phys)
         self.add_noise(add_noise=add_noise, sn_limit=sn_limit, sky_sig=sky_sig)
         self.calc_r_petro(r_petro_kpc=r_petro_kpc, resize_rp=resize_rp)
@@ -251,18 +269,48 @@ class synthetic_image:
         self.seed = self.add_background(seed=self.seed, add_background=add_background, rebin_gz=rebin_gz, n_target_pixels=n_target_pixels, fix_seed=fix_seed)
 
         end_time   = time.time()
-#        print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+        #print "init images + adding realism took "+str(end_time - start_time)+" seconds"
+        num_label = len(bb_label)
+
         if verbose:
-            print "preparing to save "+filename[:filename.index('broadband')]+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
+            print "preparing to save "+filename[:filename.index(bb_label)]+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 
         if save_fits:
             orig_dir=filename[:filename.index('broadband')]
             if bg_tag!=None:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
             else:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index('broadband_')+10:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
+                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
             self.save_bgimage_fits(outputfitsfile)
         del self.sunrise_image, self.psf_image, self.rebinned_image, self.noisy_image, self.nmag_image, self.rp_image
+        gc.collect()
+
+
+    def convolve_with_psf(self, add_psf=True):
+        if add_psf:
+            if self.telescope.psf_fits_file != None:
+                #first, rebin to psf pixel scale
+
+                n_pixel_orig = self.sunrise_image.n_pixels
+                n_pixel_new = self.sunrise_image.n_pixels*self.sunrise_image.pixel_in_arcsec/self.telescope.psf_pixsize_arcsec
+
+                new_image = congrid(self.sunrise_image.image, (n_pixel_new,n_pixel_new))
+
+                #second, convolve with PSF
+                if CONVOLVE_TYPE=='astropy':
+                    #astropy.convolution.convolve()
+                    print "convolving with astropy"
+                    conv_im = convolve(new_image,self.telescope.psf_kernel/np.sum(self.telescope.psf_kernel),boundary='fill',fill_value=0.0)  #boundary option?
+                else:
+                    #scipy.signal.convolve2d()
+                    conv_im = convolve(new_image,self.telescope.psf_kernel/np.sum(self.telescope.psf_kernel),boundary='fill',fillvalue=0.0,mode='same')  #boundary option?
+
+                self.psf_image.init_image(conv_im,self)
+                del new_image, conv_im
+            else:
+                self.add_gaussian_psf(add_psf=add_psf)
+        else:
+            self.psf_image.init_image(self.sunrise_image.image, self)
         gc.collect()
 
 
@@ -722,10 +770,30 @@ class cosmology:
 # used to track the psf size in arcsec and pixelsize in arcsec
 #=======================================================#
 class telescope:
-    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec):
+    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec,rebin_phys,add_psf):
         self.psf_fwhm_arcsec  = psf_fwhm_arcsec
         self.pixelsize_arcsec = pixelsize_arcsec
 
+        self.psf_fits_file = None
+        self.psf_kernel = None
+        self.psf_pixsize_arcsec = None
+
+        if psf_fits != None:
+            self.psf_fits_file = psf_fits
+            orig_psf_kernel = fits.open(psf_fits)[0].data
+            #psf kernel shape must be odd for astropy.convolve??
+            if orig_psf_kernel.shape[0] % 2 == 0:
+                new_psf_shape = orig_psf_kernel.shape[0]-1
+                self.psf_kernel = congrid(orig_psf_kernel,(new_psf_shape,new_psf_shape))
+            else:
+                self.psf_kernel = orig_psf_kernel
+
+            assert( self.psf_kernel.shape[0] % 2 != 0)
+            assert (psf_pixsize_arcsec != None)
+            self.psf_pixsize_arcsec = psf_pixsize_arcsec
+
+            if (self.psf_pixsize_arcsec > self.pixelsize_arcsec) and (rebin_phys==True) and (add_psf==True):
+                print "WARNING: you are requesting to rebin an image to a higher resolution than the requested PSF file supports. OK if this is desired behavior."
 
 
 
