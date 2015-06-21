@@ -36,7 +36,7 @@ for index,galnr in enumerate(all_galnrs[:1]):
     print "  path="+url
     print " "
     
-    if( !(os.path.isfile("./broadband_"+str(galnr)+".fits")) )
+    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) )
         filename = wget.download(url)
     else:
         filename = "./broadband_"+str(galnr)+".fits"

@@ -63,7 +63,7 @@ def restore_common_args():
 for index,galnr in enumerate(all_galnrs[:1]):
     url=dl_base+"illustris_images/subdir_"+str(all_subdirs[index])+"/broadband_"+str(galnr)+".fits"
     
-    if( !(os.path.isfile("./broadband_"+str(galnr)+".fits")) )
+    if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) )
         filename = wget.download(url)
     else:
         filename = "./broadband_"+str(galnr)+".fits"
