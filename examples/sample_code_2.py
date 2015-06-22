@@ -66,12 +66,8 @@ for index,galnr in enumerate(all_galnrs[:1]):
         '/stellar_mocks/broadband.fits"'
 
     if( not (os.path.isfile("./broadband_"+str(galnr)+".fits")) ):
-	print "trying to download"
         os.system(cmd)
-	print "did it download?"
-
     filename = "./broadband_"+str(galnr)+".fits"
-
 
     sunpy__plot.plot_sdss_gri(filename, savefile='./sdss_gri_'+str(galnr)+'.png')
     sunpy__plot.plot_synthetic_sdss_gri(filename, savefile='./synthetic_0_sdss_gri_'+str(galnr)+'.png' , **common_args)

@@ -95,8 +95,7 @@ n_pixels_galaxy_zoo = 424
 # and integrated here by P. Torrey
 # #########################################################
 
-dl_base="http://illustris.rc.fas.harvard.edu/data/illustris_images_aux/backgrounds"
-#bg_base='/n/home01/ptorrey/Python/OwnModules/sunpy/backgrounds'
+dl_base="http://www.illustris-project.org/files/backgrounds"
 bg_base='./data/'
 backgrounds = [	[], [], 		# GALEX 0 1
 		[bg_base+'/SDSS_backgrounds/J113959.99+300000.0-u.fits'], 	# 2 SDSS-u 
