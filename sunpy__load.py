@@ -63,6 +63,47 @@ def load_broadband_image(filename,band=0, **kwargs):
 
   return return_image
 
+def load_broadband_magnitude(filename, band=0, **kwargs):
+  band_mags = load_all_broadband_photometry(filename, **kwargs) 
+  band_names  = load_broadband_names(filename)
+  if type(band) is int:
+    return_val = band_mags[band]
+  else:
+    print band
+    band = (((band_names == band).nonzero())[0])[0]
+    print band
+    return_val = band_mags[band]
+
+  return return_val
+
+def load_resolved_broadband_magnitudes(filename, band=0, camera=0, **kwargs):
+    """ this is a little trickier b/c in W/m/m^2/str.  First convert to abs mag, then dist correction """
+    band_names  = load_broadband_names(filename)
+    if type(band) is not int:
+      band = int( (((band_names == band).nonzero())[0])[0] )
+
+    image = load_broadband_image(filename,band=band,camera=camera)	# in W/m/m^2/str  shape = [n_band, n_pix, n_pix]
+    mag   = load_broadband_magnitude(filename, band=band, camera=camera)
+
+    n_pixels = image.shape[1]
+
+    hdulist = fits.open(filename)
+    lambda_eff = hdulist['FILTERS'].data['lambda_eff']
+    this_lambda = lambda_eff[band]
+    
+    to_nu                     = ((this_lambda**2 ) / (speedoflight_m)) #* pixel_area_in_str
+    to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                 # 1 muJy/str (1Jy = 1e-26 W/m^2/Hz)
+    image *=  to_microjanskies              # to microjanskies / str
+
+    pixel_in_kpc           = load_fov(filename)  / n_pixels
+    pixel_in_sr = (1e3 * pixel_in_kpc / 10.0)**2
+    image *=  pixel_in_sr                                      # in muJy
+    image /= 1e6                                               # in Jy                         
+    tot_img_in_Jy = np.sum(image)                               # total image flux in Jy
+    abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
+    print abmag
+    return abmag
+
 
 def load_fov(filename):
     hdulist = my_fits_open(filename)
@@ -192,7 +233,7 @@ def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, **
     for index,this_lambda in enumerate(lambda_eff):
         tot_img_in_Jy = np.sum(images[index,:,:])           		  	# total image flux in Jy
         abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
-	if False:
+	if True:
             print "the ab magnitude of this image is :"+str(abmag)+"  "+str(mags[index])
 	    print abmag/mags[index], abmag - mags[index]
 
