@@ -228,19 +228,9 @@ def return_synthetic_hst_img(filename,
        val = np.arcsinh( lupton_alpha * lupton_Q * (I - scale_min))/lupton_Q
        I[ I < 1e-8 ] = 1e20               # from below, this effectively sets the pixel to 0
 
-       print val.min(), val.max()
-       print I.min(), I.max()
-    
        img[:,:,0] = r_image * val / I
        img[:,:,1] = g_image * val / I
        img[:,:,2] = b_image * val / I
-
-       print " "
-       print " "
-       print img.min(), img.max()
-
-       print " "
-       print " "
 
        maxrgbval = np.amax(img, axis=2)
 
@@ -266,15 +256,8 @@ def return_synthetic_hst_img(filename,
 	img[:,:,1] = np.log10(g_image )
 	img[:,:,2] = np.log10(b_image )
 
-
-	print max, max/dynrng
-	print img.min(), img.max()
-
         img -= np.log10( max/dynrng ) 
-        print img.min(), img.max()
         img /= np.log10( dynrng ) 
-
-	print img.min(), img.max()        
 
         img[img>1] = 1
 	I = img

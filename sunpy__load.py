@@ -66,13 +66,9 @@ def load_broadband_image(filename,band=0, **kwargs):
 def load_broadband_magnitude(filename, band=0, **kwargs):
   band_mags = load_all_broadband_photometry(filename, **kwargs) 
   band_names  = load_broadband_names(filename)
-  if type(band) is int:
-    return_val = band_mags[band]
-  else:
-    print band
-    band = (((band_names == band).nonzero())[0])[0]
-    print band
-    return_val = band_mags[band]
+  if type(band) is not int:
+      band = int( np.where([this_band == band for this_band in band_names])[0][0]  )
+  return_val = band_mags[band]
 
   return return_val
 
@@ -80,7 +76,10 @@ def load_resolved_broadband_magnitudes(filename, band=0, camera=0, **kwargs):
     """ this is a little trickier b/c in W/m/m^2/str.  First convert to abs mag, then dist correction """
     band_names  = load_broadband_names(filename)
     if type(band) is not int:
-      band = int( (((band_names == band).nonzero())[0])[0] )
+        band = int( np.where([this_band == band for this_band in band_names])[0][0]  )
+
+#    if type(band) is not int:
+#      band = int( (((band_names == band).nonzero())[0])[0] )
 
     image = load_broadband_image(filename,band=band,camera=camera)	# in W/m/m^2/str  shape = [n_band, n_pix, n_pix]
     mag   = load_broadband_magnitude(filename, band=band, camera=camera)
@@ -123,6 +122,7 @@ def load_broadband_names(filename):
     hdulist = my_fits_open(filename)
     name_array = hdulist['FILTERS'].data.field(0)
     hdulist.close()
+    name_array = [ s.replace(" ", "") for s in name_array ]
     return name_array
 
 

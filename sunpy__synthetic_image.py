@@ -115,23 +115,31 @@ backgrounds = [	[], [], 		# GALEX 0 1
 		[], [], [], [], [], [], [], []		# NIRCAM
 		]
 
-bg_zpt = [ [], [],                 # GALEX
-                        [22.5],
-                        [22.5],
-                        [22.5],
-                        [22.5],
-                        [22.5],
-                [], [], [], [],                         # 7-8-9-10 IRAC
-                [], [], [], [], [], [], [], [], [], [],         # 11-12-13-14-15-16-17-18 JOHNSON/COUSINS + 2 mass
-                [25.69],
-                [25.69],
-                [25.69],
-                [25.69],
-                [25.69],
-                [25.69],
-                [25.69],
-                [], [], [], [], [], [], [], []          # NIRCAM
-                ]
+bg_zpt = {  "u_SDSS.res":[22.5],
+            "g_SDSS.res":[22.5],
+            "r_SDSS.res":[22.5],
+            "i_SDSS.res":[22.5],
+            "z_SDSS.res":[22.5]}
+
+
+
+  #bg_zpt = [ [], [],                 # GALEX
+#                        [22.5],
+#                        [22.5],
+#                        [22.5],
+#                        [22.5],
+#                        [22.5],
+#                [], [], [], [],                         # 7-8-9-10 IRAC
+#                [], [], [], [], [], [], [], [], [], [],         # 11-12-13-14-15-16-17-18 JOHNSON/COUSINS + 2 mass
+#                [25.69],
+#                [25.69],
+#                [25.69],
+#                [25.69],
+#                [25.69],
+#                [25.69],
+#                [25.69],
+#                [], [], [], [], [], [], [], []          # NIRCAM
+#                ]
 
 
 def build_synthetic_image(filename, band, r_petro_kpc=None, **kwargs):
@@ -221,7 +229,7 @@ class synthetic_image:
         hdulist = fits.open(filename)
 	
         if type(band) is not int:
-            band = (((band_names == band).nonzero())[0])[0]
+	    band = int( np.where([this_band == band for this_band in band_names])[0][0]  )
 
         self.band             = band
         self.band_name        = band_names[band]
@@ -249,7 +257,7 @@ class synthetic_image:
         this_image = all_images[band,:,:]
         this_image = this_image * to_microjanskies 		# to microjanskies / str
 
-        if verbose:
+        if True:	#verbose:
             print "SUNRISE calculated the abmag for this system to be: {:.2f}".format(self.filter_data.AB_mag_nonscatter0[band])
 
         self.sunrise_image.init_image(this_image, self, comoving_to_phys_fov=False)
@@ -509,11 +517,21 @@ class synthetic_image:
 
         pixel_area_in_str = theobj.pixel_in_arcsec**2 / n_arcsec_per_str
         image *= pixel_area_in_str      # in muJy
+	print np.sum(image)
         if save_img_in_muJy == False:
-            if len(bg_zpt[self.band]) > 0:
-                image = image / ( 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 )) ) 
+	    print bg_zpt[self.band_name]
+            if len(bg_zpt[self.band_name]) > 0:
+                image = image / ( 10.0**(-0.4*(bg_zpt[self.band_name][0]- 23.9 )) ) 
+		print ( 10.0**(-0.4*(bg_zpt[self.band_name][0]- 23.9 )) )
         else:
             print 'saving image in muJy!!!!!'
+        print " "
+        print " "
+	print image.shape
+        print np.sum(image) 
+#        print 22.5 - 2.5*np.log10( np.sum(image) )
+#        print -2.5*np.log10( np.sum(image) )
+        print " "
 
         primhdu = fits.PrimaryHDU(image) ; primhdu.header.update('IMUNIT','NMAGGIE',comment='approx 3.63e-6 Jy')
         primhdu.header.update('ABABSZP',22.5,'For Final Image')  #THIS SHOULD BE CORRECT FOR NANOMAGGIE IMAGES ONLY
@@ -539,7 +557,10 @@ class synthetic_image:
 
         primhdu.header.update('FILTER', self.band_name)
         primhdu.header.update('FILE',self.filename)
-        primhdu.update_ext_name('SYNTHETIC_IMAGE')
+#        primhdu.update_ext_name('SYNTHETIC_IMAGE')
+	primhdu.header.name="SYNTHETIC_IMAGE"
+
+#	primhdu.header[keyword] = value
 
         #Optionally, we can save additional images alongside these final ones
         #e.g., the raw sunrise image below
@@ -837,13 +858,6 @@ class single_image:
 	abmag = -2.5 * np.log10(tot_img_in_Jy / 3631 )
 #	print "the ab magnitude of this image is :"+str(abmag)
 
-#	print " "
-#	print " "
-#	print "The FoV is :"
-#	print self.pixel_in_kpc * self.n_pixels 
-#	print ""
-#	print " "
-
 
     def calc_ab_abs_zero(self, parent_obj):
         lambda_eff_in_m         = parent_obj.lambda_eff
@@ -863,8 +877,7 @@ class single_image:
         self.image_in_nmaggies = self.image * orig_to_nmaggies
 
     def return_image(self):
-#	fixed_norm_fac		= 10.0 / n_arcsec_per_str	# should probably get rid of this
-        return self.image #* fixed_norm_fac 
+        return self.image
 
 
 def return_img_nanomaggies_to_orig(image_nm, lum_dist, ab_abs_zeropoint):
