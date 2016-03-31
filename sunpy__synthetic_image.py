@@ -19,12 +19,12 @@ import math
 import gc
 
 try:
-    import pyfits as fits
-    print "loaded pyfits"
+    import astropy.io.fits as fits
+    print "loaded astropy.io.fits"
 except:
     try:
-        import astropy.io.fits as fits
-        print "loaded astropy.io.fits"
+        import pyfits as fits
+        print "loaded pyfits"
     except:
         print "Error: Unable to access PyFITS or AstroPy modules."
         print "Add PyFITS to your site-packages with:"
@@ -47,6 +47,7 @@ import scipy.interpolate
 try:
     import astropy.convolution.convolve as convolve ; CONVOLVE_TYPE='astropy'
     print "loaded astropy.convolution.convolve"
+    from astropy.convolution import *
 except:
     try:
         from scipy.signal import convolve2d as convolve ; CONVOLVE_TYPE='scipy'
@@ -142,19 +143,21 @@ bg_zpt = {  "u_SDSS.res":[22.5],
 #                ]
 
 
-def build_synthetic_image(filename, band, r_petro_kpc=None, **kwargs):
+def build_synthetic_image(filename, band, r_petro_kpc=None, openlist=None, **kwargs):
     """ build a synthetic image from a SUNRISE fits file and return the image to the user """
-    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, **kwargs)
+    obj     	 = synthetic_image(filename, band=band, r_petro_kpc=r_petro_kpc, openlist=openlist, **kwargs)
 
     image = obj.bg_image.return_image()
     rp    = obj.r_petro_kpc
     seed  = obj.seed
     failed= obj.bg_failed
+    fitsfn = obj.fitsfn
+    openlist = obj.openlist
 
     del obj
     gc.collect() 
     
-    return image, rp, seed, failed   
+    return image, rp, seed, failed, fitsfn, openlist 
 
 def load_resolved_broadband_apparent_magnitudes(filename, redshift, camera=0, seed=12345, n_bands=36, **kwargs):
     """ loads n_band x n_pix x n_pix image array with apparent mags for synthetic images """
@@ -212,8 +215,14 @@ class synthetic_image:
             fix_seed=True,
 	    bg_tag=None,
             bb_label='broadband_',
+            output_label='',
             psf_fits=None,
             psf_pixsize_arcsec=None,
+            psf_truncate_pixels=None,
+            psf_hdu_num = 0,
+            custom_fitsfile=None,
+            bb_header=None,
+            openlist=None,
             **kwargs):
 
         if (not os.path.exists(filename)):
@@ -223,23 +232,33 @@ class synthetic_image:
         start_time = time.time()
         self.filename  = filename
         self.cosmology = cosmology(redshift)
-        self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec, rebin_phys, add_psf)
+        self.telescope = telescope(psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec, rebin_phys, add_psf, psf_truncate_pixels,psf_hdu_num)
 
         band_names  = sunpy.sunpy__load.load_broadband_names(filename)
         hdulist = fits.open(filename)
 	
+<<<<<<< Updated upstream
         if type(band) is not int:
 	    band = int( np.where([this_band == band for this_band in band_names])[0][0]  )
 
+=======
+
+        self.camera           = camera
+>>>>>>> Stashed changes
         self.band             = band
         self.band_name        = band_names[band]
         self.image_header     = hdulist['CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'].header
+        bb_header = self.image_header
         self.broadband_header = hdulist['BROADBAND'].header
         self.param_header     = hdulist['CAMERA'+str(camera)+'-PARAMETERS'].header
         self.int_quant_data   = hdulist['INTEGRATED_QUANTITIES'].data
         self.filter_data      = hdulist['FILTERS'].data
         self.lambda_eff       = (self.filter_data['lambda_eff'])[band]
+        self.ewidth_lambda    = (self.filter_data['ewidth_lambda'])[band]
+        self.ewidth_nu        = (self.filter_data['ewidth_nu'])[band]
+        self.sunrise_absolute_mag = (self.filter_data['AB_mag_nonscatter'+str(self.camera)])[band]
         hdulist.close()
+
 #============= DECLARE ALL IMAGES HERE =================#
         self.sunrise_image  = single_image()		# orig sunrise image
         self.psf_image      = single_image()		# supersampled image + psf convolution
@@ -249,9 +268,10 @@ class synthetic_image:
         self.rp_image       = single_image()		# scale image based on rp radius criteria (for GZ)
         self.bg_image	    = single_image()		# add backgrounds (only possible for 5 SDSS bands at the moment)
 #============ SET ORIGINAL IMAGE ======================#
-        all_images  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera)
+        all_images,self.openlist  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera,openlist=openlist)
 
-        to_nu                     = ((self.lambda_eff**2 ) / (speedoflight_m)) #* pixel_area_in_str
+        #to_nu                     = ((self.lambda_eff**2 ) / (speedoflight_m)) #* pixel_area_in_str
+        to_nu = (self.ewidth_lambda/self.ewidth_nu)
         to_microjanskies          = (1.0e6) * to_nu * (1.0e26)                 # 1 muJy/str (1Jy = 1e-26 W/m^2/Hz)
 
         this_image = all_images[band,:,:]
@@ -283,14 +303,19 @@ class synthetic_image:
             print "preparing to save "+filename[:filename.index(bb_label)]+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_'+str(int(self.seed))+'.fits'
 
         if save_fits:
-            orig_dir=filename[:filename.index('broadband')]
-            if bg_tag!=None:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
+            if custom_fitsfile != None:
+                self.save_bgimage_fits_mujyas(custom_fitsfile,add_noise=add_noise,add_background=add_background)
+                self.fitsfn = custom_fitsfile
             else:
-                outputfitsfile = orig_dir+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
-            self.save_bgimage_fits(outputfitsfile)
-        del self.sunrise_image, self.psf_image, self.rebinned_image, self.noisy_image, self.nmag_image, self.rp_image
-        gc.collect()
+                orig_dir=filename[:filename.index('broadband')]
+                if bg_tag!=None:
+                    outputfitsfile = orig_dir+output_label+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(bg_tag))+'.fits'
+                else:
+                    outputfitsfile = orig_dir+output_label+'synthetic_image_'+filename[filename.index(bb_label)+num_label:filename.index('.fits')]+'_band_'+str(self.band)+'_camera_'+str(camera)+'_bg_'+str(int(self.seed))+'.fits'
+                self.save_bgimage_fits(outputfitsfile)
+                self.fitsfn=outputfitsfile
+            del self.sunrise_image, self.psf_image, self.rebinned_image, self.noisy_image, self.nmag_image, self.rp_image
+            gc.collect()
 
 
     def convolve_with_psf(self, add_psf=True):
@@ -301,13 +326,16 @@ class synthetic_image:
                 n_pixel_orig = self.sunrise_image.n_pixels
                 n_pixel_new = self.sunrise_image.n_pixels*self.sunrise_image.pixel_in_arcsec/self.telescope.psf_pixsize_arcsec
 
+                #print np.sum(self.sunrise_image.image)
                 new_image = congrid(self.sunrise_image.image, (n_pixel_new,n_pixel_new))
+                #print np.sum(new_image)
 
                 #second, convolve with PSF
                 if CONVOLVE_TYPE=='astropy':
                     #astropy.convolution.convolve()
                     print "convolving with astropy"
-                    conv_im = convolve(new_image,self.telescope.psf_kernel/np.sum(self.telescope.psf_kernel),boundary='fill',fill_value=0.0)  #boundary option?
+                    conv_im = convolve_fft(new_image,self.telescope.psf_kernel,boundary='fill',fill_value=0.0,normalize_kernel=True)  #boundary option?
+                    #print np.sum(conv_im)
                 else:
                     #scipy.signal.convolve2d()
                     conv_im = convolve(new_image,self.telescope.psf_kernel/np.sum(self.telescope.psf_kernel),boundary='fill',fillvalue=0.0,mode='same')  #boundary option?
@@ -576,6 +604,101 @@ class synthetic_image:
             #save container to file, overwriting as needed
             newlist.writeto(outputfitsfile,clobber=True)
 
+
+    def save_bgimage_fits_mujyas(self,outputfitsfile, save_img_in_muJy=False,add_noise=False, add_background=False):
+	""" Written by G. Snyder 8/4/2014 to output FITS files from Sunpy module """
+        """ Updated 9/24/2015 """
+
+        theobj = self.bg_image
+        image = np.copy( theobj.return_image() )		# in muJy / str
+        image *= 1.0/n_arcsec_per_str      # in muJy/Arcsec**2
+
+        sunobj = self.sunrise_image
+        sunimage = np.copy(sunobj.return_image() )
+        sunimage *= 1.0/n_arcsec_per_str
+
+        #print theobj.pixel_in_arcsec
+        AB_zeropoint = -2.5*np.log10(theobj.pixel_in_arcsec**2) - 2.5*(-6.0) + 2.5*np.log10(3631.0)  #for image in muJy/Arcsec**2
+        total_apparent_mag = -2.5*np.log10(np.sum(image)) + AB_zeropoint
+        total_absolute_mag = -2.5*np.log10(np.sum(image)) + AB_zeropoint - self.cosmology.distance_modulus
+        sunrise_absolute_mag = self.sunrise_absolute_mag
+
+        sun_AB_app_zp = -2.5*np.log10(sunobj.pixel_in_arcsec**2) - 2.5*(-6.0) + 2.5*np.log10(3631.0)
+        sun_AB_cam_zp = -2.5*np.log10(sunobj.camera_pixel_in_arcsec**2) - 2.5*(-6.0) + 2.5*np.log10(3631.0)
+        sun_AB_abs_zp = sun_AB_app_zp - self.cosmology.distance_modulus
+
+        sunrise_image_camera_mag = -2.5*np.log10(np.sum(sunimage)) + sun_AB_cam_zp
+        sunrise_image_apparent_mag = -2.5*np.log10(np.sum(sunimage)) + sun_AB_app_zp
+        sunrise_image_absolute_mag = -2.5*np.log10(np.sum(sunimage)) + sun_AB_abs_zp
+
+        primhdu = fits.PrimaryHDU(np.float32(image)) ; primhdu.header.update('IMUNIT','muJy/SqArcsec',comment='microjanskies per square arcsecond')
+        primhdu.header.update('ABZP',round(AB_zeropoint,6),'For Final Image')
+        primhdu.header.update('PIXSCALE',round(theobj.pixel_in_arcsec,6),'For Final Image, arcsec')
+        primhdu.header.update('PIXORIG', round(theobj.camera_pixel_in_arcsec,6), 'For Original Image, arcsec')
+        primhdu.header.update('PIXKPC',round(theobj.pixel_in_kpc,6), 'KPC')
+        primhdu.header.update('ORIGKPC',round(self.sunrise_image.pixel_in_kpc,6),'For Original Image, KPC')
+        primhdu.header.update('NPIX',theobj.n_pixels)
+        primhdu.header.update('NPIXORIG',self.sunrise_image.n_pixels)
+
+        primhdu.header.update('REDSHIFT',self.cosmology.redshift)
+        primhdu.header.update('LUMDIST' ,round(self.cosmology.lum_dist,6), 'MPC')
+        primhdu.header.update('ANGDIST' ,round(self.cosmology.ang_diam_dist,6), 'MPC')
+        primhdu.header.update('PSCALE'  ,round(self.cosmology.kpc_per_arcsec,6),'KPC')
+        primhdu.header.update('DISTMOD'  ,round(self.cosmology.distance_modulus,6),'Mag')
+
+        primhdu.header.update('H0',round(self.cosmology.H0,6))
+        primhdu.header.update('WM',round(self.cosmology.WM,6))
+        primhdu.header.update('WV',round(self.cosmology.WV,6))
+
+        if self.telescope.psf_fits_file==None:
+            primhdu.header.update('PSFFWHM',round(self.telescope.psf_fwhm_arcsec,6),'arcsec')
+        else:
+            primhdu.header.update('PSFFILE',os.path.join(os.path.basename(os.path.dirname(self.telescope.psf_fits_file)),os.path.basename(self.telescope.psf_fits_file)))
+
+        primhdu.header.update('TPIX',round(self.telescope.pixelsize_arcsec,6),'arcsec')
+
+        primhdu.header.update('FILTER', self.band_name)
+        primhdu.header.update('FILE',self.filename)
+        primhdu.header.update('EFLAMBDA',round(self.lambda_eff*1.0e6,6),'filter effective wavelength [microns]')
+
+        primhdu.header.update('MAG', round(total_apparent_mag,6), 'AB system')
+        primhdu.header.update('ABSMAG', round(total_absolute_mag,6), 'AB system')
+        primhdu.header.update('SUNMAG', round(sunrise_absolute_mag,6), 'from spectrum, Note: excludes Lyman absorption')
+        primhdu.header.update('SUNCMAG', round(sunrise_image_camera_mag,6), 'from image, camera mag')
+        primhdu.header.update('SUNAPMAG', round(sunrise_image_apparent_mag,6), 'from image, apparent mag')
+        primhdu.header.update('SUABSMAG', round(sunrise_image_absolute_mag,6), 'from image, absolute mag')
+
+        if add_noise==False and add_background==False:
+            primhdu.header.update('SKYSIG', 0.0, 'image units')
+        elif sky_sig != None:
+            primhdu.header.update('SKYSIG', round(self.sky_sig,6), 'image units')
+
+        if add_background==True:
+            primhdu.header.update('BGFILE', os.path.basename(backgrounds[self.band]))
+
+        camera_param_cards = self.param_header.cards[13:]
+        for card in camera_param_cards:
+            #print card
+            primhdu.header.append(card)
+
+
+        primhdu.update_ext_name('SYNTHETIC_IMAGE')
+
+        #Optionally, we can save additional images alongside these final ones
+        #e.g., the raw sunrise image below
+        #simhdu = pyfits.ImageHDU(self.sunriseimage, header=self.image_header) ; zhdu.update_ext_name('SIMULATED_IMAGE')
+        #newlist = pyfits.HDUList([primhdu, simhdu])
+
+        #create HDU List container
+
+        newlist = fits.HDUList([primhdu])
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            #save container to file, overwriting as needed
+            newlist.writeto(outputfitsfile,clobber=True)
+
+
 def get_pixelsize_arcsec(header):
     cd1_1 = header.get('CD1_1')  # come in degrees	
     cd1_2 = header.get('CD1_2')
@@ -780,7 +903,7 @@ class cosmology:
         self.lum_dist       = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DL_Mpc']          ## luminosity dist in mpc
         self.ang_diam_dist  = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['DA_Mpc']          ## 
         self.kpc_per_arcsec = (cosmocalc.cosmocalc(self.redshift, H0=self.H0, WM=self.WM, WV=self.WV))['PS_kpc']
-
+        self.distance_modulus = 5.0 * ( np.log10(self.lum_dist*1.0e6) - 1.0 )
 
 
 
@@ -790,17 +913,31 @@ class cosmology:
 # used to track the psf size in arcsec and pixelsize in arcsec
 #=======================================================#
 class telescope:
-    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec,rebin_phys,add_psf):
+    def __init__(self, psf_fwhm_arcsec, pixelsize_arcsec, psf_fits, psf_pixsize_arcsec,rebin_phys,add_psf,psf_truncate_pixels,psf_hdu_num):
         self.psf_fwhm_arcsec  = psf_fwhm_arcsec
         self.pixelsize_arcsec = pixelsize_arcsec
+        self.psf_truncate_pixels = psf_truncate_pixels
+        self.psf_hdu_num = psf_hdu_num
 
         self.psf_fits_file = None
         self.psf_kernel = None
         self.psf_pixsize_arcsec = None
 
+        #future upgrade:  pass kernel directly and pixel scale instead?
         if psf_fits != None:
             self.psf_fits_file = psf_fits
-            orig_psf_kernel = fits.open(psf_fits)[0].data
+            orig_psf_hdu = fits.open(psf_fits,ignore_missing_end=True)[psf_hdu_num]                
+            orig_psf_kernel = orig_psf_hdu.data
+            #some psfs come in cubes... what does this parameter mean?  for STDPSF: fiducial detector positions... want near center
+            if orig_psf_kernel.ndim==3:
+                npsf = orig_psf_kernel.shape[0]
+                orig_psf_kernel = orig_psf_kernel[npsf/2,:,:]
+
+            if psf_truncate_pixels != None:
+                psfc = orig_psf_kernel.shape[0]/2
+                st = self.psf_truncate_pixels
+                orig_psf_kernel = orig_psf_kernel[psfc-st:psfc+st,psfc-st:psfc+st]
+
             #psf kernel shape must be odd for astropy.convolve??
             if orig_psf_kernel.shape[0] % 2 == 0:
                 new_psf_shape = orig_psf_kernel.shape[0]-1

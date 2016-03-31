@@ -12,12 +12,12 @@ import numpy as np
 import os
 import sys
 try:
-    import pyfits as fits
-    print "loaded pyfits"
+    import astropy.io.fits as fits
+    print "loaded astropy.io.fits"
 except:
     try:
-        import astropy.io.fits as fits
-        print "loaded astropy.io.fits"
+        import pyfits as fits
+        print "loaded pyfits"
     except:
         print "Error: Unable to access PyFITS or AstroPy modules.\n\n"+"With root access, add PyFITS to your site-packages with:\n\n"+"% pip install pyfits\n"+"or\n"+"% easy_install pyfits\n\n"+"or download at: www.stsci.edu/institute/software_hardware/pyfits/Download\n"+"where additional installation options and instructions can be found."
 
@@ -167,19 +167,26 @@ def load_broadband_effective_wavelengths(filename,band=None):
   return name_array
 
 
-def load_all_broadband_images(filename,camera=0):
+def load_all_broadband_images(filename,camera=0,openlist=None):
   if (not os.path.exists(filename)):
     print "file not found:", filename
     sys.exit()
 
   camera_string = 'CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'
-  hdulist = fits.open(filename)
-  data = hdulist[camera_string].data
+
+  if openlist is None:
+      openlist = fits.open(filename,memmap=False)
+      data = openlist[camera_string].data
+      #openlist.close()
+      print "### Sunpy: opening broadband list: ", openlist.filename()
+  else:
+      openfn = openlist.filename()
+      assert openfn==filename
+      data = openlist[camera_string].data
 
   data[ data < 1e-20 ] = 1e-20
 
-  hdulist.close()
-  return data
+  return data,openlist
 
 
 def load_broadband_image(filename,band=0,camera=0):
@@ -200,8 +207,9 @@ def load_all_broadband_photometry(filename,camera=0):
     print "file not found:", filename
     return 0
 
+  cst = str(camera)
   hdulist = fits.open(filename)
-  data = hdulist['FILTERS'].data['AB_mag_nonscatter0']  
+  data = hdulist['FILTERS'].data['AB_mag_nonscatter'+cst]  
   return data
  
  
