@@ -503,7 +503,7 @@ class synthetic_image:
                 startj = np.random.random_integers(5,halfval_j)
                 bg_image_raw = im[starti:starti+Npix_get,startj:startj+Npix_get]        # the extracted patch...
                 #=== need to convert to microJy / str ===#
-                bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band][0]- 23.9 ))       # if you got your zero points right, this is now in muJy
+                bg_image_muJy = bg_image_raw * 10.0**(-0.4*(bg_zpt[self.band_name][0]- 23.9 ))       # if you got your zero points right, this is now in muJy
                 pixel_area_in_str       = pixsize**2 / n_arcsec_per_str
                 bg_image = bg_image_muJy / pixel_area_in_str
                 #=== need to rebin bg_image  ===#
