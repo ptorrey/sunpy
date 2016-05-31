@@ -237,14 +237,10 @@ class synthetic_image:
         band_names  = sunpy.sunpy__load.load_broadband_names(filename)
         hdulist = fits.open(filename)
 	
-<<<<<<< Updated upstream
         if type(band) is not int:
 	    band = int( np.where([this_band == band for this_band in band_names])[0][0]  )
 
-=======
-
         self.camera           = camera
->>>>>>> Stashed changes
         self.band             = band
         self.band_name        = band_names[band]
         self.image_header     = hdulist['CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'].header
