@@ -167,13 +167,16 @@ def load_broadband_effective_wavelengths(filename,band=None):
   return name_array
 
 
-def load_all_broadband_images(filename,camera=0,openlist=None):
+def load_all_broadband_images(filename,camera=0,openlist=None,use_nonscatter=True):
   if (not os.path.exists(filename)):
     print "file not found:", filename
     sys.exit()
 
-  camera_string = 'CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'
-
+  if use_nonscatter is True:
+      camera_string = 'CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'
+  else:
+      camera_string = 'CAMERA'+str(camera)+'-BROADBAND'
+      
   if openlist is None:
       openlist = fits.open(filename,memmap=False)
       data = openlist[camera_string].data

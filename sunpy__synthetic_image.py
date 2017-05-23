@@ -223,6 +223,7 @@ class synthetic_image:
             custom_fitsfile=None,
             bb_header=None,
             openlist=None,
+            use_nonscatter=True,
             **kwargs):
 
         if (not os.path.exists(filename)):
@@ -243,7 +244,11 @@ class synthetic_image:
         self.camera           = camera
         self.band             = band
         self.band_name        = band_names[band]
-        self.image_header     = hdulist['CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'].header
+        if use_nonscatter is True:
+            self.image_header     = hdulist['CAMERA'+str(camera)+'-BROADBAND-NONSCATTER'].header
+        else:
+            self.image_header     = hdulist['CAMERA'+str(camera)+'-BROADBAND'].header
+
         bb_header = self.image_header
         self.broadband_header = hdulist['BROADBAND'].header
         self.param_header     = hdulist['CAMERA'+str(camera)+'-PARAMETERS'].header
@@ -252,7 +257,11 @@ class synthetic_image:
         self.lambda_eff       = (self.filter_data['lambda_eff'])[band]
         self.ewidth_lambda    = (self.filter_data['ewidth_lambda'])[band]
         self.ewidth_nu        = (self.filter_data['ewidth_nu'])[band]
-        self.sunrise_absolute_mag = (self.filter_data['AB_mag_nonscatter'+str(self.camera)])[band]
+        if use_nonscatter is True:
+            self.sunrise_absolute_mag = (self.filter_data['AB_mag_nonscatter'+str(self.camera)])[band]
+        else:
+            self.sunrise_absolute_mag = (self.filter_data['AB_mag'+str(self.camera)])[band]
+            
         hdulist.close()
 
 #============= DECLARE ALL IMAGES HERE =================#
@@ -264,7 +273,7 @@ class synthetic_image:
         self.rp_image       = single_image()		# scale image based on rp radius criteria (for GZ)
         self.bg_image	    = single_image()		# add backgrounds (only possible for 5 SDSS bands at the moment)
 #============ SET ORIGINAL IMAGE ======================#
-        all_images,self.openlist  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera,openlist=openlist)
+        all_images,self.openlist  = sunpy.sunpy__load.load_all_broadband_images(filename,camera=camera,openlist=openlist,use_nonscatter=use_nonscatter)
 
         #to_nu                     = ((self.lambda_eff**2 ) / (speedoflight_m)) #* pixel_area_in_str
         to_nu = (self.ewidth_lambda/self.ewidth_nu)
